@@ -1,6 +1,7 @@
 // Simulator test for sequences: key 1 runs
 //   tap gamepad A, wait 60 ms, tap A, hold RT while the key is held,
 //   and when it is let go: tap keyboard 'x'.
+// Only one profile is in use, so the records start right after it.
 // Script: hold key 1 for 400 ms, let go.
 // Expected gamepad reports: A, -, A, -, RT held, released; then keyboard 'x' tapped.
 
@@ -32,7 +33,9 @@ void SET_load(void) {
   a->type = ACT_SEQ;
   a->p1 = 0;
   a->p2 = 0;
-  for(i = 0; i < sizeof(SEQ); i++) cfg[RECORDS_OFFSET + i] = SEQ[i];   // replaces the combos
+  cfg[S_PROFILES] = 1;                        // one profile: records start right after it
+  for(i = RECORDS_AT(1); i < RECORDS_END; i++) cfg[i] = REC_END;
+  for(i = 0; i < sizeof(SEQ); i++) cfg[RECORDS_AT(1) + i] = SEQ[i];
   cfg[S_CHECKSUM] = SET_checksum(cfg);
   SET_valid(cfg);
 }

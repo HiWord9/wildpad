@@ -53,6 +53,8 @@ static __bit    brightDirty;              // brightness changed from the pad its
 static __xdata uint16_t brightTime;
 static __xdata uint16_t profTime;                 // when the profile last changed (LED flash)
 
+static __xdata uint8_t nProf;             // profiles in use
+static __xdata uint8_t recOff;            // where the records (combos, sequences) start
 static __xdata action_t comboAct;         // scratch copy of a combo action
 static __xdata action_t baseAct;          // scratch copy of a profile action
 static __xdata int16_t axisValue;                // cached gamepad axis value for rel
@@ -63,7 +65,9 @@ static void applySettings(void) {
   INP_setInvert(CFG_FLAGS & FLAG_INVERT);
   INP_setHalfstep(CFG_FLAGS & FLAG_HALFSTEP);
   INP_setDebounce(cfg[S_DEBOUNCE_MS]);
-  if(prof >= N_PROFILES) prof = 0;
+  nProf = cfg[S_PROFILES] ? cfg[S_PROFILES] : N_PROFILES;
+  recOff = RECORDS_AT(nProf);
+  if(prof >= nProf) prof = 0;
 }
 
 // The active profile's action for an input, without the ACT_NOW flag
@@ -84,7 +88,7 @@ static __bit axisMode(void) {
 }
 
 static void setProfile(uint8_t p) {
-  if(p >= N_PROFILES) return;
+  if(p >= nProf) return;
   if(p != prof) {
     prof = p;
     center = pos;                         // a new axis starts centered
@@ -99,7 +103,7 @@ static void setProfile(uint8_t p) {
 // held == trig is the long press of that key. A combo of the active profile wins
 // over an all-profiles combo with the same controls.
 static __xdata action_t* findCombo(uint8_t held, uint8_t trig) {
-  uint8_t i = RECORDS_OFFSET, key = (held << 4) | trig, p;
+  uint8_t i = recOff, key = (held << 4) | trig, p;
   __xdata uint8_t* c;
   __xdata uint8_t* any = 0;
   while(i < RECORDS_END) {
@@ -121,7 +125,7 @@ static __xdata action_t* findCombo(uint8_t held, uint8_t trig) {
 
 // Does button h start combos with other inputs (so its own action waits for release)?
 static __bit startsCombos(uint8_t h) {
-  uint8_t i = RECORDS_OFFSET, p;
+  uint8_t i = recOff, p;
   __xdata uint8_t* c;
   while(i < RECORDS_END) {
     c = cfg + i;
@@ -140,7 +144,7 @@ static __bit startsCombos(uint8_t h) {
 static __xdata uint8_t seqStart, seqMark, seqEnd;
 
 static __bit findSeq(uint8_t id) {
-  uint8_t i = RECORDS_OFFSET;
+  uint8_t i = recOff;
   __xdata uint8_t* c;
   while(i < RECORDS_END) {
     c = cfg + i;
@@ -291,8 +295,8 @@ static void oneShot(__xdata action_t* a) {
       center = pos;
       break;
     case ACT_PROFILE:
-      if(a->p1 == PROF_NEXT)      setProfile(prof + 1 < N_PROFILES ? prof + 1 : 0);
-      else if(a->p1 == PROF_PREV) setProfile(prof ? prof - 1 : N_PROFILES - 1);
+      if(a->p1 == PROF_NEXT)      setProfile(prof + 1 < nProf ? prof + 1 : 0);
+      else if(a->p1 == PROF_PREV) setProfile(prof ? prof - 1 : nProf - 1);
       else                        setProfile(a->p1);
       break;
     case ACT_LIGHT:
@@ -612,7 +616,7 @@ static void startAction(uint8_t i, __xdata action_t* a) {
       addJob(JOB_TAP, ACT_KEY, a->p1, a->p2);
       break;
     case ACT_PROFILE:
-      if(a->p2 == PROF_WHILE_HELD && a->p1 < N_PROFILES) {    // remember where to return
+      if(a->p2 == PROF_WHILE_HELD && a->p1 < nProf) {         // remember where to return
         tmpAct.type = ACT_PROFILE; tmpAct.p1 = prof; tmpAct.p2 = 0;
         addHeld(i, &tmpAct);
         setProfile(a->p1);
@@ -927,7 +931,7 @@ static void CFG_task(void) {
       bootPending = 1;
       break;
     case CMD_PROFILE:
-      if(off >= N_PROFILES) { status = ST_BAD_RANGE; break; }
+      if(off >= nProf) { status = ST_BAD_RANGE; break; }
       setProfile(off);
       break;
     case CMD_INJECT:                                        // as if pressed / turned by hand

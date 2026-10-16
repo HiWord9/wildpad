@@ -28,7 +28,8 @@
 #define PROFILE_HEAD        4                       // r, g, b, light effect
 #define PROFILE_SIZE        (PROFILE_HEAD + 3 * N_INPUTS)
 #define PROFILES_OFFSET     12
-#define RECORDS_OFFSET      (PROFILES_OFFSET + N_PROFILES * PROFILE_SIZE)
+#define RECORDS_AT(n)       (PROFILES_OFFSET + (n) * PROFILE_SIZE)   // records after n profiles
+#define RECORDS_OFFSET      RECORDS_AT(N_PROFILES)                   // ... with all profiles in use
 #define RECORDS_END         (SETTINGS_SIZE - 1)
 
 #if PROFILES_OFFSET + 3 * PROFILE_SIZE + 32 <= SETTINGS_SIZE - 1
@@ -53,6 +54,8 @@
 #define S_TURN_HOLD         10          // what a knob turn holds (ACT_KEY_HOLD modifiers, held
                                         // sequence steps) is let go this long after the last
                                         // click, 100 ms units (0 = 800 ms)
+#define S_PROFILES          11          // profiles in use, 1..N_PROFILES (0 = all); the room of
+                                        // unused profiles goes to combos and sequences
 #define S_CHECKSUM          (SETTINGS_SIZE - 1)
 
 // S_FLAGS
@@ -128,7 +131,7 @@
 #define AXIS_MASK           0x0F
 #define AXIS_FREE           0x80        // no hard stop: turning past full lock winds up
 
-// Records, packed one after the other from RECORDS_OFFSET:
+// Records, packed one after the other right after the profiles in use:
 //  combo     [held << 4 | trigger, profile << 5 | type, p1, p2]      first byte < 0x80
 //  sequence  [REC_SEQ | id, length, steps...]                          id 0..126
 //  REC_END   end of the list (the rest is 0xFF)

@@ -23,6 +23,9 @@ any speed, and its app can only assign a key per button. Detent replaces both.
   a shortcut. Holding a key on its own (long press) can do something else too. A key's
   own action can wait until you let go (so it doesn't fire when you use a combo) or be
   held right away, so combos add to it.
+- **Several steps.** Any action can be a short sequence: tap things, hold something
+  for as long as you hold the control, wait, and do more when you let go. For example
+  *tap A, tap A again, then hold RT* for a double jump and throttle in a game.
 - **App switchers.** A shortcut can keep Ctrl / Alt / Win held while the key is tapped:
   on a key for as long as you hold it, on the knob for as long as you keep turning.
   *Turn the knob* and windows switch like Alt+Tab, stop and the window is picked; or
@@ -103,8 +106,7 @@ In every profile: **hold the knob and press key 1, 2 or 3** to switch profiles,
 its own action (mute) is sent when you let go of it.
 
 Profile 3 switches windows: **turn the knob** and Alt stays held while you turn, so the
-window switcher moves along; stop for 0.8 s and the window is picked. **Hold the knob
-and turn** switches browser tabs there instead of the brightness. The preset *Switch
+window switcher moves along; stop for 0.8 s and the window is picked. The preset *Switch
 windows: press and turn* does it the other way round: pressing the knob opens the
 switcher (Alt+Tab with Alt held) and turning moves through it until you let go.
 
@@ -130,6 +132,8 @@ python tools/detent.py show                       # everything on the pad
 python tools/detent.py set 1 key1 key:ctrl+c      # profile 1, key 1
 python tools/detent.py set 2 right axis:lx:10     # profile 2, knob = stick X
 python tools/detent.py combo add key1 key2 media:mute
+python tools/detent.py set 1 key3 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
+python tools/detent.py option profiles 1                  # more memory for combos and steps
 python tools/detent.py light 1 breathe #ff8800
 python tools/detent.py export backup.json         # same format as the setup page
 python tools/detent.py actions                    # all action and key names
@@ -174,8 +178,10 @@ built-in Xbox driver for just that interface; nothing has to be installed and no
 Microsoft IDs are borrowed. The configuration protocol and the settings layout are
 documented in [docs/protocol.md](docs/protocol.md).
 
-Settings live in the chip's 128-byte Data-Flash, which limits how much fits: 3
-profiles and 12 combo slots on this board. Text macros don't fit.
+Settings live in the chip's 128-byte Data-Flash, which limits how much fits. Combos
+and multi-step actions share what the profiles leave: 49 bytes with 3 profiles (a
+combo takes 4, a step 3, a wait 1), 93 bytes with a single profile. The setup page
+shows how much is used. Long text macros don't fit.
 
 ## Credits and license
 

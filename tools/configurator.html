@@ -495,8 +495,10 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
         </div>
       </div>
       <div class="panel">
-        <div class="panel-h"><h2>Startup and compatibility</h2></div>
+        <div class="panel-h"><h2>Profiles and startup</h2></div>
         <div class="panel-b">
+          <div class="setting"><div><h3>Profiles</h3><p>How many profiles you use. The pad's memory is small: every profile you don't use leaves 22 more bytes for combos and multi-step actions.</p></div>
+            <div class="seg right" id="optProfiles" style="min-width:150px"></div></div>
           <div class="setting"><div><h3>Profile after plugging in</h3><p>The pad starts in this profile.</p></div>
             <select class="plain right" id="optStart"></select></div>
           <div class="setting"><div><h3>Xbox 360 controller identity</h3><p>Only for systems that don't recognize the gamepad otherwise, such as Linux. Keys, mouse and this page stop working while it's on. To turn it off again, plug the pad in while holding key 3.</p></div>
@@ -544,7 +546,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 3, SVER = 4;
 const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11 };
 const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offset or length" };
-const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10 };
+const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10, PROFILES: 11 };
 const FLAG = { INVERT: 1, HALF: 2, XBOX: 4 };
 const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10, KEY_HOLD: 11, SEQ: 12 };
 // records after the profiles: combos and sequences (see docs/protocol.md)
@@ -777,9 +779,13 @@ class Layout {
   }
 }
 
+// Profiles in use (header byte, 0 = all) and where the records start after them
+const profCount = (L, b) => b[S.PROFILES] >= 1 && b[S.PROFILES] <= L.profiles ? b[S.PROFILES] : L.profiles;
+const recordsAt = (L, n) => L.profOff + n * L.profSize;
+
 function parseRecords(L, b) {
   const combos = [], seqs = new Map();
-  let i = L.recOff;
+  let i = recordsAt(L, profCount(L, b));
   const end = L.size - 1;
   while (i < end && b[i] !== REC_END) {
     if (b[i] < REC_SEQ) {
@@ -847,7 +853,24 @@ class Model {
   combos() { return this.cs.map((c, slot) => ({ ...c, slot })); }
   setCombo(slot, c) { this.cs[slot] = { held: c.held, trig: c.trig, prof: c.prof, a: c.a }; }
   delCombo(slot) { this.cs.splice(slot, 1); }
-  freeSlot() { return this.usedBytes() + 4 <= this.L.recSize ? this.cs.length : -1; }
+  freeSlot() { return this.usedBytes() + 4 <= this.recSize() ? this.cs.length : -1; }
+  // profiles in use; the room of the others goes to combos and steps
+  get np() { return profCount(this.L, this.b); }
+  recOff() { return recordsAt(this.L, this.np); }
+  recSize() { return this.L.size - 1 - this.recOff(); }
+  setProfileCount(n) {
+    const old = this.np;
+    if (n < old)                                             // drop combos of / to removed profiles
+      this.cs = this.cs.filter(c => (c.prof === ALL || c.prof < n) && !(c.a.t === T.PROFILE && c.a.p1 >= n && c.a.p1 < PROF_NEXT));
+    for (let p = old; p < n; p++) {                          // new profiles start empty
+      const o = this.po(p);
+      this.b.fill(0, o, o + this.L.profSize);
+      this.b.set(hexToRgb(["#00aaff", "#ff8c00", "#00e0b0"][p] || "#ffffff"), o);
+      this.b[o + 3] = 1;
+    }
+    this.b[S.PROFILES] = n === this.L.profiles ? 0 : n;
+    if (this.b[S.START] >= n) this.b[S.START] = 0;
+  }
   // sequences: {press: [step], release: [step]}, step = {op: "tap" | "hold", a} or {op: "wait", ms}
   addSeq(sq) { const id = this.nextSeq++; this.seqs.set(id, sq); return id; }
   seq(id) { return this.seqs.get(id) || { press: [], release: [] }; }
@@ -863,7 +886,7 @@ class Model {
       if (k < 0) { order.push(a.p1); k = order.length - 1; }
       return A(T.SEQ, k);
     };
-    for (let p = 0; p < this.L.profiles; p++)
+    for (let p = 0; p < this.np; p++)
       for (let i = 0; i < this.L.inputs; i++) { const a = this.action(p, i); if (a.t === T.SEQ) { const r = ref(a); if (remap) remap.push([p, i, r]); } }
     const out = [];
     for (const c of this.cs) { const a = ref(c.a); out.push(c.held << 4 | c.trig, c.prof << 5 | a.t, a.p1, a.p2); }
@@ -879,18 +902,18 @@ class Model {
   startsCombos(h, p) { return this.combos().some(c => c.held === h && c.trig !== h && (c.prof === p || c.prof === ALL)); }
   usesGamepad() {
     const pad = a => a && (a.t === T.PAD || a.t === T.AXIS);
-    for (let p = 0; p < this.L.profiles; p++) for (let i = 0; i < this.L.inputs; i++) if (pad(this.action(p, i))) return true;
+    for (let p = 0; p < this.np; p++) for (let i = 0; i < this.L.inputs; i++) if (pad(this.action(p, i))) return true;
     if (this.cs.some(c => pad(c.a))) return true;
     for (const sq of this.seqs.values()) if ([...sq.press, ...sq.release].some(st => pad(st.a))) return true;
     return false;
   }
   bytes() {
     const remap = [], rec = this.records(remap);
-    if (rec.length > this.L.recSize) throw new MemoryFull(rec.length - this.L.recSize);
+    if (rec.length > this.recSize()) throw new MemoryFull(rec.length - this.recSize());
     const b = new Uint8Array(this.b);
     for (const [p, i, a] of remap) { const o = this.po(p) + 4 + 3 * i; b[o] = (b[o] & NOW) | a.t; b[o + 1] = a.p1; b[o + 2] = a.p2; }
-    b.fill(REC_END, this.L.recOff, this.L.size);
-    b.set(rec, this.L.recOff);
+    b.fill(REC_END, this.recOff(), this.L.size);
+    b.set(rec, this.recOff());
     b[0] = 0xA5; b[1] = SVER;
     let x = 0; for (let i = 0; i < b.length - 1; i++) x = (x + b[i]) & 255; b[b.length - 1] = x; return b;
   }
@@ -900,9 +923,9 @@ class Model {
     return {
       format: "detent-settings", version: SVER, board: { inputs: names },
       options: { brightness: b[S.BRIGHT], holdMs: b[S.HOLD] * 10, debounceMs: b[S.DEBOUNCE], tapMs: b[S.TAP],
-        clicksPerTurn: b[S.DETENTS], startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED], turnHoldMs: (b[S.TURN_HOLD] || 8) * 100,
+        clicksPerTurn: b[S.DETENTS], profiles: this.np, startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED], turnHoldMs: (b[S.TURN_HOLD] || 8) * 100,
         reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF), xbox360: !!(f & FLAG.XBOX) },
-      profiles: Array.from({ length: L.profiles }, (_, p) => ({ color: this.color(p), light: EFFECTS[this.effect(p)][0],
+      profiles: Array.from({ length: this.np }, (_, p) => ({ color: this.color(p), light: EFFECTS[this.effect(p)][0],
         actions: Object.fromEntries(names.map((n, i) => [n, actionToText(this.action(p, i), this)])),
         rightAway: names.filter((n, i) => this.now(p, i)) })),
       combos: this.combos().map(c => ({ hold: L.fileName(c.held), then: L.fileName(c.trig),
@@ -917,11 +940,12 @@ class Model {
     b[S.DEBOUNCE] = clamp(o.debounceMs, 1, 30, b[S.DEBOUNCE]);
     b[S.TAP] = clamp(o.tapMs, 1, 50, b[S.TAP]);
     b[S.DETENTS] = clamp(o.clicksPerTurn, 4, 100, b[S.DETENTS]);
-    b[S.START] = clamp((o.startProfile ?? 1) - 1, 0, L.profiles - 1, 0);
+    this.setProfileCount(clamp(o.profiles ?? (j.profiles || []).length ?? L.profiles, 1, L.profiles, L.profiles));
+    b[S.START] = clamp((o.startProfile ?? 1) - 1, 0, this.np - 1, 0);
     b[S.SPEED] = clamp(o.lightSpeed, 1, 10, b[S.SPEED]);
     b[S.TURN_HOLD] = clamp(Math.round((o.turnHoldMs ?? (b[S.TURN_HOLD] || 8) * 100) / 100), 2, 30, 8);
     b[S.FLAGS] = (o.reverseKnob ? FLAG.INVERT : 0) | (o.halfStep ? FLAG.HALF : 0) | (o.xbox360 ? FLAG.XBOX : 0);
-    (j.profiles || []).slice(0, L.profiles).forEach((pr, p) => {
+    (j.profiles || []).slice(0, this.np).forEach((pr, p) => {
       if (/^#[0-9a-f]{6}$/i.test(pr.color || "")) this.setColor(p, pr.color.toLowerCase());
       const e = EFFECTS.findIndex(x => x[0] === pr.light); if (e >= 0) this.setEffect(p, e);
       for (const [name, text] of Object.entries(pr.actions || {})) {
@@ -933,7 +957,8 @@ class Model {
     for (const c of j.combos || []) {
       let held, trig; try { held = L.fromFileName(c.hold); trig = L.fromFileName(c.then); } catch { continue; }
       if (held >= L.buttons) continue;
-      this.cs.push({ held, trig, prof: c.profile === "all" ? ALL : clamp(c.profile - 1, 0, L.profiles - 1, 0), a: textToAction(c.action, this) });
+      if (c.profile !== "all" && (+c.profile < 1 || +c.profile > this.np)) continue;
+      this.cs.push({ held, trig, prof: c.profile === "all" ? ALL : +c.profile - 1, a: textToAction(c.action, this) });
     }
     this.bytes();                                           // throws if it doesn't fit
   }
@@ -942,7 +967,7 @@ class Model {
 // Factory settings, same bytes as SET_defaults() in firmware/src/settings.c
 function factory(L) {
   const b = new Uint8Array(L.size);
-  b.fill(REC_END, L.recOff);
+  b.fill(REC_END, recordsAt(L, L.profiles));
   b.set([0xA5, SVER, 0, 128, 30, 5, 4, 20, 0, 5, 8], 0);
   const m = new Model(L, b);
   const K = L.knob;
@@ -975,9 +1000,8 @@ function applyPreset(m, p, which) {
   } else if (which === "windows" || which === "windows-press") {
     set(k[0], A(T.KEY, 8, 0x07)); set(k[1], A(T.KEY, 8, 0x08)); set(k[2], A(T.KEY, 8 | 2, 0x16));
     if (which === "windows") {
-      // turn: Alt+Tab with Alt held until the knob stops; press: task view; hold + turn: browser tabs
+      // turn: Alt+Tab with Alt held until the knob stops; press: task view
       set(L.knob, A(T.KEY, 8, 0x2B)); set(L.right, A(T.KEY_HOLD, 4, 0x2B)); set(L.left, A(T.KEY_HOLD, 4 | 2, 0x2B));
-      combo(L.knob, L.right, A(T.KEY, 1, 0x2B)); combo(L.knob, L.left, A(T.KEY, 1 | 2, 0x2B));
     } else {
       // press: Alt+Tab with Alt held (the switcher opens at once); hold + turn: next / previous window
       set(L.knob, A(T.KEY_HOLD, 4, 0x2B)); set(L.right, A(T.KEY, 1, 0x2B)); set(L.left, A(T.KEY, 1 | 2, 0x2B));
@@ -1220,7 +1244,7 @@ function renderBanner() {
 function renderProfiles() {
   const box = $("profiles"); box.replaceChildren();
   box.append(h("span", { class: "profiles-label", text: "Profile" }));
-  for (let p = 0; p < L.profiles; p++) {
+  for (let p = 0; p < model.np; p++) {
     box.append(h("button", { class: "prof", "aria-pressed": p === prof ? "true" : "false", onclick: () => selectProfile(p) },
       h("span", { class: "sw", style: `background:${model.color(p)}` }), `Profile ${p + 1}`,
       dev && live.prof === p ? h("span", { class: "live", text: "active" }) : null));
@@ -1237,7 +1261,7 @@ function renderProfiles() {
       toast(`Copied profile ${v + 1} into profile ${prof + 1}`);
     } },
     h("option", { value: "", text: "Copy from…" }),
-    Array.from({ length: L.profiles }, (_, p) => p).filter(p => p !== prof).map(p => h("option", { value: p, text: `Profile ${p + 1}` })));
+    Array.from({ length: model.np }, (_, p) => p).filter(p => p !== prof).map(p => h("option", { value: p, text: `Profile ${p + 1}` })));
   box.append(h("div", { class: "prof-tools" }, tab === "settings" ? null : [copySel, presetSel]));
 }
 
@@ -1532,7 +1556,7 @@ function mouseEditor(a, set, opts) {
 
 function deviceEditor(a, set) {
   const isP = a.t === T.PROFILE, held = isP && a.p2 === 1;
-  const targets = [...Array.from({ length: L.profiles }, (_, p) => [p, `Profile ${p + 1}`]), [PROF_NEXT, "Next"], [PROF_PREV, "Previous"]];
+  const targets = [...Array.from({ length: model.np }, (_, p) => [p, `Profile ${p + 1}`]), [PROF_NEXT, "Next"], [PROF_PREV, "Previous"]];
   return h("div", {},
     h("div", { class: "sub-h", text: "Switch profile" }),
     h("div", { class: "grid narrow" }, targets.map(([p, n]) => h("button", { class: "opt", "aria-pressed": isP && a.p1 === p ? "true" : "false", onclick: () => set(A(T.PROFILE, p, held ? 1 : 0)) }, n))),
@@ -1598,8 +1622,8 @@ function stepsEditor(id, a, opts) {
       : "These run in order. Held steps stay pressed until you let go; then the steps below run." }),
     section("press", opts.turn ? "On every click" : "When pressed", "No steps yet: add one below."),
     opts.turn ? null : section("release", "When let go", "Nothing extra when you let go."),
-    h("div", { class: "mem" }, h("div", { class: "mem-bar" }, h("i", { style: `width:${Math.min(100, used / L.recSize * 100)}%` })),
-      h("span", { text: `${used} of ${L.recSize} bytes of the pad's memory for combos and steps used` })));
+    h("div", { class: "mem" }, h("div", { class: "mem-bar" }, h("i", { style: `width:${Math.min(100, used / model.recSize() * 100)}%` })),
+      h("span", { text: `${used} of ${model.recSize()} bytes of the pad's memory for combos and steps used` + (model.np > 1 ? ". Using fewer profiles (Settings) gives more." : "") })));
 }
 
 // Shortcut recording
@@ -1655,7 +1679,7 @@ function comboRow(c, compact) {
 
 function renderCombos() {
   const all = model.combos(), mine = all.filter(c => c.prof === prof || c.prof === ALL);
-  $("comboCount").textContent = `${model.usedBytes()} of ${L.recSize} bytes used`;
+  $("comboCount").textContent = `${model.usedBytes()} of ${model.recSize()} bytes used`;
   const list = $("comboList"); list.replaceChildren();
   if (!mine.length) list.append(h("div", { class: "empty", text: "No combos in this profile. Add one to make a key do more." }));
   else mine.forEach(c => list.append(comboRow(c)));
@@ -1743,13 +1767,22 @@ function renderSettings() {
   $("optTap").value = b[S.TAP]; $("optTapVal").textContent = b[S.TAP] + " ms";
   $("optDebounce").value = b[S.DEBOUNCE]; $("optDebounceVal").textContent = b[S.DEBOUNCE] + " ms";
   $("optTurnHold").value = b[S.TURN_HOLD] || 8; $("optTurnHoldVal").textContent = ((b[S.TURN_HOLD] || 8) / 10).toFixed(1) + " s";
-  const st = $("optStart"); st.replaceChildren(...Array.from({ length: L.profiles }, (_, p) => h("option", { value: p, selected: p === b[S.START], text: `Profile ${p + 1}` })));
+  const st = $("optStart"); st.replaceChildren(...Array.from({ length: model.np }, (_, p) => h("option", { value: p, selected: p === b[S.START], text: `Profile ${p + 1}` })));
+  const pc = $("optProfiles"); pc.replaceChildren(...Array.from({ length: L.profiles }, (_, k) => h("button", {
+    "aria-pressed": k + 1 === model.np ? "true" : "false",
+    onclick: () => {
+      if (k + 1 === model.np) return;
+      const lost = model.combos().filter(c => (c.prof !== ALL && c.prof > k) || (c.a.t === T.PROFILE && c.a.p1 > k && c.a.p1 < PROF_NEXT)).length;
+      change(m => m.setProfileCount(k + 1), "profiles");
+      if (prof > k) selectProfile(0);
+      toast(`${k + 1} profile${k ? "s" : ""}: ${model.recSize()} bytes for combos and steps` + (lost ? `. Removed ${lost} combo${lost > 1 ? "s" : ""} of the dropped profiles.` : ""));
+    } }, String(k + 1))));
   const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad", "Xbox 360 controller"][L.usb] || "?";
   $("fwInfo").replaceChildren(
     h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Detent ${L.fw}` : "Not connected (demo)" }),
     h("dt", { text: "Board" }), h("dd", { text: `${L.keys.length} keys and a knob, ${L.leds} lights` }),
     h("dt", { text: "Shows up as" }), h("dd", { text: dev ? usb : "—" }),
-    h("dt", { text: "Memory" }), h("dd", { text: `${L.profiles} profiles; ${L.recSize} bytes for combos and steps, ${model.usedBytes()} used` }));
+    h("dt", { text: "Memory" }), h("dd", { text: `${model.np} of ${L.profiles} profiles in use; ${model.recSize()} bytes for combos and steps, ${model.usedBytes()} used` }));
   $("bootBtn").disabled = !dev;
 }
 

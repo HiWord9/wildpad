@@ -52,7 +52,7 @@ USB_LAYOUTS = ["keyboard", "keyboard + gamepad", "Xbox 360 controller"]
 
 # ----------------------------------------------------------------- settings layout
 S_MAGIC, S_VERSION, S_FLAGS, S_BRIGHTNESS, S_HOLD, S_DEBOUNCE, S_TAP, S_DETENTS, \
-    S_START, S_SPEED, S_TURN_HOLD = range(11)
+    S_START, S_SPEED, S_TURN_HOLD, S_PROFILES = range(12)
 MAGIC = 0xA5
 FLAG_INVERT, FLAG_HALFSTEP, FLAG_XBOX360 = 0x01, 0x02, 0x04
 ALL_PROFILES = 7
@@ -288,10 +288,39 @@ class Settings:
             raise ActionError(f"light effect must be one of {', '.join(EFFECTS)}")
         self.b[self._poff(p) + 3] = EFFECTS.index(name)
 
+    # profiles in use: the room of the others goes to combos and sequences
+    @property
+    def np(self):
+        n = self.b[S_PROFILES]
+        return n if 1 <= n <= self.L.profiles else self.L.profiles
+
+    @property
+    def rec_off(self):
+        return self.L.prof_off + self.np * self.L.prof_size
+
+    @property
+    def rec_size(self):
+        return self.L.size - 1 - self.rec_off
+
+    def set_profile_count(self, n):
+        if not 1 <= n <= self.L.profiles:
+            raise ActionError(f"profiles must be 1..{self.L.profiles}")
+        old = self.np
+        if n < old:
+            self.cs = [c for c in self.cs if (c[2] == ALL_PROFILES or c[2] < n)
+                       and not (c[3][0] == ACT_PROFILE and n <= c[3][1] < PROF_NEXT)]
+        for q in range(old, n):                             # new profiles start empty
+            o = self._poff(q)
+            self.b[o:o + self.L.prof_size] = bytes(self.L.prof_size)
+            self.b[o:o + 4] = bytes([255, 255, 255, 1])
+        self.b[S_PROFILES] = 0 if n == self.L.profiles else n
+        if self.b[S_START] >= n:
+            self.b[S_START] = 0
+
     # records: combos and sequences, packed after the profiles
     def _parse_records(self):
         self.cs, self.seqs = [], {}
-        i, end, b = self.L.rec_off, self.L.size - 1, self.b
+        i, end, b = self.rec_off, self.L.size - 1, self.b
         while i < end and b[i] != REC_END:
             if b[i] < REC_SEQ:
                 self.cs.append((b[i] >> 4, b[i] & 0x0F, b[i + 1] >> 5, (b[i + 1] & 0x1F, b[i + 2], b[i + 3])))
@@ -328,7 +357,7 @@ class Settings:
                 order.append(a[1])
             return (ACT_SEQ, order.index(a[1]), 0)
 
-        for p in range(self.L.profiles):
+        for p in range(self.np):
             for i in range(self.L.inputs):
                 a = self.action(p, i)
                 if a[0] == ACT_SEQ:
@@ -425,12 +454,12 @@ class Settings:
         self.cs = []
 
     def finalize(self):
-        rec = self._records()
-        if len(rec) > self.L.rec_size:
+        rec, off = self._records(), self.rec_off
+        if len(rec) > self.rec_size:
             raise ActionError(f"that doesn't fit: combos and steps need {len(rec)} bytes, "
-                              f"the pad has {self.L.rec_size}")
-        self.b[self.L.rec_off:self.L.size] = bytes([REC_END] * (self.L.size - self.L.rec_off))
-        self.b[self.L.rec_off:self.L.rec_off + len(rec)] = bytes(rec)
+                              f"the pad has {self.rec_size}" + (" (fewer profiles give more)" if self.np > 1 else ""))
+        self.b[off:self.L.size] = bytes([REC_END] * (self.L.size - off))
+        self.b[off:off + len(rec)] = bytes(rec)
         self.b[S_MAGIC], self.b[S_VERSION] = MAGIC, SETTINGS_VERSION
         self.b[-1] = sum(self.b[:-1]) & 0xFF
         return bytes(self.b)
@@ -445,7 +474,7 @@ class Settings:
             "options": {
                 "brightness": self.b[S_BRIGHTNESS], "holdMs": self.b[S_HOLD] * 10,
                 "debounceMs": self.b[S_DEBOUNCE], "tapMs": self.b[S_TAP],
-                "clicksPerTurn": self.b[S_DETENTS], "startProfile": self.b[S_START] + 1,
+                "clicksPerTurn": self.b[S_DETENTS], "profiles": self.np, "startProfile": self.b[S_START] + 1,
                 "lightSpeed": self.b[S_SPEED], "turnHoldMs": (self.b[S_TURN_HOLD] or 8) * 100,
                 "reverseKnob": bool(f & FLAG_INVERT),
                 "halfStep": bool(f & FLAG_HALFSTEP), "xbox360": bool(f & FLAG_XBOX360)},
@@ -453,7 +482,7 @@ class Settings:
                           "actions": {L.names[i]: self.text(self.action(p, i))
                                       for i in range(L.inputs)},
                           "rightAway": [L.names[i] for i in range(L.buttons) if self.now(p, i)]}
-                         for p in range(L.profiles)],
+                         for p in range(self.np)],
             "combos": [{"hold": L.names[h], "then": L.names[t],
                         "profile": "all" if p == ALL_PROFILES else p + 1,
                         "action": self.text(a)} for _, h, t, p, a in self.combos()],
@@ -469,7 +498,8 @@ class Settings:
         b[S_DEBOUNCE] = max(1, min(30, int(o.get("debounceMs", b[S_DEBOUNCE]))))
         b[S_TAP] = max(1, min(50, int(o.get("tapMs", b[S_TAP]))))
         b[S_DETENTS] = max(4, min(100, int(o.get("clicksPerTurn", b[S_DETENTS]))))
-        b[S_START] = max(0, min(L.profiles - 1, int(o.get("startProfile", b[S_START] + 1)) - 1))
+        self.set_profile_count(max(1, min(L.profiles, int(o.get("profiles", len(j.get("profiles", [])) or L.profiles)))))
+        b[S_START] = max(0, min(self.np - 1, int(o.get("startProfile", b[S_START] + 1)) - 1))
         b[S_SPEED] = max(1, min(10, int(o.get("lightSpeed", b[S_SPEED]))))
         b[S_TURN_HOLD] = max(2, min(30, int(o.get("turnHoldMs", (b[S_TURN_HOLD] or 8) * 100)) // 100))
         flags = 0
@@ -477,7 +507,7 @@ class Settings:
         flags |= FLAG_HALFSTEP if o.get("halfStep") else 0
         flags |= FLAG_XBOX360 if o.get("xbox360") else 0
         b[S_FLAGS] = flags
-        for p, prof in enumerate(j.get("profiles", [])[:L.profiles]):
+        for p, prof in enumerate(j.get("profiles", [])[:self.np]):
             self.set_color(p, prof.get("color", self.color(p)))
             self.set_effect(p, prof.get("light", self.effect(p)))
             right_away = prof.get("rightAway")             # missing: usual choice per action
@@ -563,13 +593,13 @@ def print_settings(s):
                             ("Xbox 360 identity", FLAG_XBOX360)) if b[S_FLAGS] & f]
     print(f"              {b[S_DETENTS]} clicks per turn, light speed {b[S_SPEED]}, "
           f"starts in profile {b[S_START] + 1}" + (", " + ", ".join(flags) if flags else ""))
-    for p in range(L.profiles):
+    for p in range(s.np):
         print(f"\nprofile {p + 1}     light {s.effect(p)} {s.color(p)}")
         for i in range(L.inputs):
             mark = "   (sent right away)" if i < L.buttons and s.now(p, i) else ""
             print(f"  {L.names[i]:<10}  {s.text(s.action(p, i))}{mark}")
     combos = s.combos()
-    print(f"\ncombos ({len(combos)}; combos and steps use {s.used_bytes()} of {L.rec_size} bytes)")
+    print(f"\ncombos ({len(combos)}; combos and steps use {s.used_bytes()} of {s.rec_size} bytes)")
     for n, h, t, p, a in combos:
         where = "all profiles" if p == ALL_PROFILES else f"profile {p + 1}"
         what = f"hold {L.names[h]} (long press)" if h == t else f"hold {L.names[h]} + {L.names[t]}"
@@ -580,7 +610,7 @@ def cmd_info(d):
     L = d.layout
     print(f"Detent firmware {L.fw}, board {L.board}: {L.buttons} buttons, {L.leds} LEDs")
     print(f"USB layout    {USB_LAYOUTS[L.usb] if L.usb < 3 else L.usb}")
-    print(f"profiles      {L.profiles} (now using {L.current + 1}), {L.rec_size} bytes for combos and steps")
+    print(f"profiles      up to {L.profiles}, now in profile {L.current + 1}")
     print(f"inputs        {' '.join(L.names)}")
 
 
@@ -611,9 +641,9 @@ def apply(d, s):
 def parse_profile(d, text):
     if text == "all":
         return ALL_PROFILES
-    p = int(text) - 1
-    if not 0 <= p < d.layout.profiles:
-        raise ActionError(f"profile must be 1..{d.layout.profiles}")
+    p, n = int(text) - 1, d.read().np                       # profiles in use
+    if not 0 <= p < n:
+        raise ActionError(f"profile must be 1..{n}" + (" (see: option profiles)" if n < d.layout.profiles else ""))
     return p
 
 
@@ -658,7 +688,7 @@ Keys: """ + " ".join(KEYCODES))
 def main(argv):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__)
-        print("OPTIONS: " + " ".join(OPTIONS) + " start-profile " + " ".join(FLAG_OPTIONS) + " (on/off)")
+        print("OPTIONS: " + " ".join(OPTIONS) + " profiles start-profile " + " ".join(FLAG_OPTIONS) + " (on/off)")
         return
     c, args = argv[0], argv[1:]
     if c == "actions":
@@ -712,6 +742,8 @@ def main(argv):
                 s.b[off] = v // unit
             elif name == "start-profile":
                 s.b[S_START] = parse_profile(d, val)
+            elif name == "profiles":
+                s.set_profile_count(int(val))
             elif name in FLAG_OPTIONS:
                 on = val.lower() in ("on", "1", "yes", "true")
                 s.b[S_FLAGS] = (s.b[S_FLAGS] & ~FLAG_OPTIONS[name]) | (FLAG_OPTIONS[name] if on else 0)

@@ -17,8 +17,7 @@ __xdata uint8_t cfg[SETTINGS_SIZE];
 // Factory settings. Profile 1: media keys, profile 2: editing, profile 3: windows
 // and tabs. In every profile: hold the knob and press key N for profile N, hold the
 // knob and turn it to change the light brightness. In profile 3 turning the knob
-// switches windows (Alt stays held until the knob stops) and turning it while held
-// switches browser tabs instead of the brightness.
+// switches windows (Alt stays held until the knob stops).
 static __code uint8_t DEF_HEADER[11] = {
   SETTINGS_MAGIC, SETTINGS_VERSION, 0, 128, 30, 5, 4, 20, 0, 5, 8
 };
@@ -58,8 +57,6 @@ static __code uint8_t DEF_COMBOS[][6] = {
   {KNOB, 2,        ALL, ACT_PROFILE, 2, PROF_SWITCH},
   {KNOB, IN_RIGHT, ALL, ACT_LIGHT, LIGHT_BRIGHTER, 0},
   {KNOB, IN_LEFT,  ALL, ACT_LIGHT, LIGHT_DIMMER, 0},
-  {KNOB, IN_RIGHT, 2,   ACT_KEY, CTRL, 0x2B},          // next browser tab
-  {KNOB, IN_LEFT,  2,   ACT_KEY, CTRL | SHIFT, 0x2B},  // previous browser tab
 };
 
 void SET_defaults(__xdata uint8_t* dst) {
@@ -105,17 +102,18 @@ static uint8_t isPadType(uint8_t t) {
 
 // Check settings p; on success also note whether any action needs the gamepad
 uint8_t SET_valid(__xdata uint8_t* p) {
-  uint8_t i, j, end, pad = 0;
+  uint8_t i, j, end, pad = 0, n = p[S_PROFILES] ? p[S_PROFILES] : N_PROFILES;
   __xdata uint8_t* q;
   if(p[S_MAGIC] != SETTINGS_MAGIC || p[S_VERSION] != SETTINGS_VERSION) return 0;
+  if(n > N_PROFILES) return 0;
   if(p[S_CHECKSUM] != SET_checksum(p)) return 0;
   if(p[S_HOLD_10MS] < 10 || p[S_HOLD_10MS] > 100) return 0;
   if(p[S_DEBOUNCE_MS] == 0 || p[S_DEBOUNCE_MS] > 30) return 0;
   if(p[S_TAP_MS] == 0 || p[S_TAP_MS] > 50) return 0;
-  if(p[S_START_PROFILE] >= N_PROFILES) return 0;
+  if(p[S_START_PROFILE] >= n) return 0;
   if(p[S_LED_SPEED] == 0 || p[S_LED_SPEED] > 10) return 0;
   if(p[S_TURN_HOLD] > 30) return 0;
-  for(i = 0; i < N_PROFILES; i++) {
+  for(i = 0; i < n; i++) {
     q = p + PROFILES_OFFSET + i * PROFILE_SIZE;
     if(q[3] > LED_LAST) return 0;
     for(j = 0; j < N_INPUTS; j++) {
@@ -124,7 +122,7 @@ uint8_t SET_valid(__xdata uint8_t* p) {
       pad |= isPadType(end);
     }
   }
-  i = RECORDS_OFFSET;                                // walk the record list
+  i = RECORDS_AT(n);                                 // walk the record list
   while(i < RECORDS_END && p[i] != REC_END) {
     q = p + i;
     if(q[0] < REC_SEQ) {                             // combo
@@ -134,7 +132,7 @@ uint8_t SET_valid(__xdata uint8_t* p) {
       if(j > ACT_LAST) return 0;
       pad |= isPadType(j);
       j = q[1] >> 5;
-      if(j >= N_PROFILES && j != COMBO_ALL_PROFILES) return 0;
+      if(j >= n && j != COMBO_ALL_PROFILES) return 0;
       i += 4;
     }
     else {                                           // sequence

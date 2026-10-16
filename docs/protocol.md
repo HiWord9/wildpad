@@ -55,14 +55,14 @@ INFO payload:
 | 4 | buttons (keys + knob switch) |
 | 5 | index of the knob switch |
 | 6 | settings size (128) |
-| 7 | number of profiles |
+| 7 | maximum number of profiles |
 | 8 | USB layout: 0 keyboard, 1 keyboard + gamepad, 2 Xbox 360 controller |
 | 9 | number of LEDs |
-| 10 | number of combo slots |
+| 10 | bytes for records (combos, sequences) with all profiles in use |
 | 11 | offset of the first profile |
 | 12 | size of one profile |
-| 13 | offset of the first combo |
-| 14 | settings version (3) |
+| 13 | offset of the records with all profiles in use (each unused profile moves it back by the profile size) |
+| 14 | settings version (4) |
 | 15 | active profile |
 
 Older firmware: protocol 2 (Detent 1.0 previews) had a fixed 104-byte layout with
@@ -72,47 +72,68 @@ recognises both by the protocol byte of the cmd 1 response.
 ## Settings (128 bytes)
 
 Inputs are numbered: buttons `0 … B-1` (B = buttons from INFO), then *knob right* (B)
-and *knob left* (B + 1). Offsets below are for the 3-key board (B = 4, 3 profiles,
-12 combos); other boards use the offsets from INFO.
+and *knob left* (B + 1). Offsets below are for the 3-key board (B = 4, profiles of 22
+bytes from offset 12); other boards use the sizes from INFO.
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | magic `0xA5` |
-| 1 | 1 | settings version `3` |
+| 1 | 1 | settings version `4` |
 | 2 | 1 | flags: 1 reverse knob, 2 half-step knob, 4 Xbox 360 identity |
 | 3 | 1 | LED brightness (0–255) |
 | 4 | 1 | hold time for long presses, 10 ms units (10–100) |
 | 5 | 1 | debounce in ms (1–30) |
-| 6 | 1 | tap length in ms (1–50) |
+| 6 | 1 | tap length in ms (1–50); gamepad buttons are tapped for at least 40 ms |
 | 7 | 1 | knob clicks per turn (only for drawing) |
 | 8 | 1 | profile after power-up (0-based) |
 | 9 | 1 | light animation speed (1–10) |
-| 10 | 1 | switcher hold after turning: a knob turn with a *key, modifiers held* action keeps them held this long after the last click, 100 ms units (2–30; 0 = 8) |
-| 11 | 1 | reserved |
-| 12 | 22 × 3 | profiles: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see Combos) |
-| 78 | 4 × 12 | combos |
-| 126 | 1 | reserved |
+| 10 | 1 | switcher hold after turning: what a knob turn holds (type 11 modifiers, *hold* steps) is let go this long after the last click, 100 ms units (2–30; 0 = 8) |
+| 11 | 1 | profiles in use, 1 … max (0 = all) |
+| 12 | 22 × n | the n profiles in use: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see below) |
+| after | rest | records: combos and sequences, packed, then `0xFF` |
 | 127 | 1 | checksum: sum of bytes 0–126, modulo 256 |
+
+Every profile that is not in use leaves its 22 bytes to the records: with 3 profiles
+there are 49 bytes for combos and sequences, with 1 profile 93.
 
 Light effects: 0 off, 1 solid, 2 breathe, 3 rainbow, 4 light on press, 5 knob position
 (gamepad axis; solid otherwise).
 
-### Combos (4 bytes)
+### Records
 
-`[held << 4 | trigger, profile << 5 | action type, p1, p2]`. While *held* (a button) is
-pressed, *trigger* (any input) does the action instead of its own. `held == trigger`
-is a long press of that button. Profile 7 means all profiles. An unused slot starts
-with `0xFF`.
+Records follow each other without gaps; the first byte tells the kind:
+
+| First byte | Record | Size |
+|---|---|---|
+| `0x00`–`0x7F` | combo `[held << 4 \| trigger, profile << 5 \| action type, p1, p2]` | 4 |
+| `0x80`–`0xFE` | sequence `[0x80 \| id, length, steps…]` | 2 + length |
+| `0xFF` | end of the list | |
+
+**Combos.** While *held* (a button) is pressed, *trigger* (any input) does the action
+instead of its own. `held == trigger` is a long press of that button. Profile 7 means
+all profiles; a combo of the active profile wins over an all-profiles combo with the
+same controls.
 
 A button that starts combos or has a long press sends its own action when it is
 released (as a tap), unless a combo was used while it was held. If bit `0x80` of the
 button's action type in the profile is set ("right away"), the action is pressed at
 once and held until release instead, and combos work on top of it; a long press is
-then ignored. Example: knob = Alt right away, knob + right = Tab, knob + left =
-Shift+Tab gives Alt+Tab window switching.
+then ignored.
 
-A combo of the active profile wins over an all-profiles combo with the same held
-input and trigger.
+**Sequences.** An action of type 12 runs sequence *p1*. Its steps run one after the
+other; each step's first byte is `op | x`:
+
+| op | Step | Size |
+|---|---|---|
+| `0x00` | tap action of type *x*, then p1, p2: pressed and released (gamepad buttons for at least 40 ms, with a 40 ms gap after) | 3 |
+| `0x20` | hold action of type *x*, then p1, p2: stays pressed until the input is let go; on a knob turn until the knob stops | 3 |
+| `0x40` | wait *x* × 20 ms (x = 1–31; longer waits are several steps) | 1 |
+| `0x60` | the steps after this one run when the input is let go | 1 |
+
+A sequence can't contain another one. On a knob turn the steps run for every click;
+steps after `0x60` don't apply there. Example, "tap A twice, then hold RT while the
+key is held, and tap X when it is let go":
+`80 0E 06 01 00 43 06 01 00 26 08 00 60 01 00 1B`.
 
 ### Actions (3 bytes: type, p1, p2)
 
@@ -129,11 +150,12 @@ input and trigger.
 | 8 | center the axis | |
 | 9 | profile | p1 profile (0-based), 0xF0 next, 0xF1 previous; p2 0 switch, 1 only while held |
 | 10 | lights | p1 0 on/off, 1 brighter, 2 dimmer (brightness changes are stored after 3 s) |
-| 11 | key, modifiers held | like type 1, but Ctrl / Alt / Win (not Shift) stay held: on a button while it is held (the key and Shift are tapped once), on a knob turn until the knob has stopped for the switcher hold time (the key and Shift are tapped on every click). For Alt+Tab-style switchers. |
+| 11 | key, modifiers held | like type 1, but Ctrl / Alt / Win (not Shift) stay held: on a button while it is held (the key and Shift are tapped once), on a knob turn until the knob has stopped (the key and Shift are tapped on every click). For Alt+Tab-style switchers. |
+| 12 | sequence | p1 sequence id |
 
 Keys, media keys, mouse buttons and gamepad buttons stay pressed while their input is
 held; knob clicks press and release them once per click. The gamepad interface is
-present whenever any profile or combo uses type 6 or 7.
+present whenever any action, combo or step uses type 6 or 7.
 
 ## File format
 
@@ -141,18 +163,21 @@ present whenever any profile or combo uses type 6 or 7.
 
 ```json
 {
-  "format": "detent-settings", "version": 3,
+  "format": "detent-settings", "version": 4,
   "options": { "brightness": 128, "holdMs": 300, "debounceMs": 5, "tapMs": 4,
-               "clicksPerTurn": 20, "startProfile": 1, "lightSpeed": 5, "turnHoldMs": 800,
-               "reverseKnob": false, "halfStep": false, "xbox360": false },
+               "clicksPerTurn": 20, "profiles": 3, "startProfile": 1, "lightSpeed": 5,
+               "turnHoldMs": 800, "reverseKnob": false, "halfStep": false, "xbox360": false },
   "profiles": [ { "color": "#00aaff", "light": "solid",
-                  "actions": { "key1": "media:previous-track", "knob": "media:mute",
+                  "actions": { "key1": "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt; on release; tap key:x",
+                               "knob": "media:mute",
                                "right": "media:volume-up", "left": "media:volume-down" },
                   "rightAway": [] } ],
   "combos": [ { "hold": "knob", "then": "key1", "profile": "all", "action": "profile:1" } ]
 }
 ```
 
-Action texts are listed by `detent.py actions`; `key:alt+tab:hold` is type 11. `rightAway` lists the buttons whose
-own action is sent right away; when it is missing, modifier-only keys and gamepad
-buttons are sent right away and everything else on release.
+Action texts are listed by `detent.py actions`; `key:alt+tab:hold` is type 11 and
+`seq:…` a sequence (steps `tap ACTION`, `hold ACTION`, `wait MS`, `on release`,
+separated by `;`). `rightAway` lists the buttons whose own action is sent right away;
+when it is missing, modifier-only keys, gamepad buttons and type 11 are sent right
+away and everything else on release.
