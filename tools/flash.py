@@ -3,37 +3,52 @@
 
   python flash.py [firmware.bin]
 
-1. If the open firmware is already running, the device is told to jump into its
-   USB bootloader (no need to open the case).
-2. Otherwise put it into the bootloader by hand:
+1. If Detent firmware is already running, it is told to jump into the USB
+   bootloader (no need to open the case).
+2. Otherwise enter the bootloader by hand:
      - stock firmware: open the case, short the R12 pads (or P1.5 to GND) while
        plugging in the USB cable
-     - open firmware: hold key 1 while plugging in
-3. Windows needs the WinUSB driver for the bootloader device (USB ID 4348:55E0)
-   once - this script explains how if it is missing.
+     - Detent firmware: hold key 1 while plugging in
+3. Windows needs the WinUSB driver for the bootloader (USB ID 4348:55E0) once;
+   the script walks you through it with Zadig.
 
-The programming protocol is chprog by Stefan Wagner (MIT), based on chflasher by
-Aaron Christophel and wchprog by juliuswwj.
+On Windows the bootloader is driven through the WinUSB API directly (libusb ignores
+it after a firmware jump because the hub reports configuration 0). Elsewhere pyusb
+is used. The programming protocol is chprog by Stefan Wagner (MIT), based on
+chflasher by Aaron Christophel and wchprog by juliuswwj.
 """
 import os
-import struct
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))               # winusb.py lives next to this script
 DEFAULT_BIN = [HERE.parent / "firmware" / "detent.bin",              # release package
                HERE.parent / "firmware" / "build" / "detent.bin"]      # local build
+
+CH_VID, CH_PID = 0x4348, 0x55E0
+MODE_WRITE, MODE_VERIFY = 0xA5, 0xA6
+DETECT_CHIP_CMD = (0xA1, 0x12, 0x00, 0x52, 0x11, 0x4D, 0x43, 0x55, 0x20, 0x49, 0x53, 0x50,
+                   0x20, 0x26, 0x20, 0x57, 0x43, 0x48, 0x2E, 0x43, 0x4E)
+CODE_FLASH_SIZE = 14336
+WINDOWS = os.name == "nt"
 
 ZADIG_URL = "https://github.com/pbatard/libwdi/releases/download/v1.5.1/zadig-2.9.exe"
 ZADIG_SHA256 = "4ecaa95df3da3621486a043aef8b3050b8bafe7c901402871e816229ef82039b"
 
-CH_VID, CH_PID = 0x4348, 0x55E0
-MODE_WRITE_V2, MODE_VERIFY_V2 = 0xA5, 0xA6
-DETECT_CHIP_CMD_V2 = (0xA1, 0x12, 0x00, 0x52, 0x11, 0x4D, 0x43, 0x55, 0x20, 0x49, 0x53, 0x50,
-                      0x20, 0x26, 0x20, 0x57, 0x43, 0x48, 0x2E, 0x43, 0x4E)
-CODE_FLASH_SIZE = 14336
+DRIVER_STEPS = """
+The bootloader (USB ID 4348:55E0) needs the WinUSB driver. This is needed once per PC,
+and it can be installed without the macropad connected:
+
+  1. Zadig opens now (allow admin rights; it is downloaded on first use).
+  2. Menu  Device -> Create New Device
+  3. Name field (top): CH552 bootloader
+     USB ID fields:    4348    55E0     (leave the third box empty)
+  4. Driver (right of the green arrow): WinUSB
+  5. Click "Install Driver" and wait for "The driver was installed successfully".
+"""
 
 
 def need(module, pipname):
@@ -45,13 +60,9 @@ def need(module, pipname):
         return __import__(module)
 
 
-def libusb_backend():
-    need("usb", "pyusb")
-    lp = need("libusb_package", "libusb-package")
-    import usb.backend.libusb1
-    return usb.backend.libusb1.get_backend(find_library=lp.find_library)
-
-
+# ===================================================================================
+# Getting into the bootloader
+# ===================================================================================
 def try_software_bootloader():
     """If Detent firmware is running, ask it to jump into the bootloader.
     Works with protocol 1 (first release) and protocol 2."""
@@ -65,7 +76,7 @@ def try_software_bootloader():
     except Exception:
         return False
     try:
-        dev.send_feature_report(b"\x00" + bytes([1, 77]) + bytes(38))          # INFO / READ
+        dev.send_feature_report(b"\x00" + bytes([1, 77]) + bytes(38))         # INFO / READ
         proto = 1
         for _ in range(50):
             time.sleep(0.005)
@@ -74,57 +85,13 @@ def try_software_bootloader():
             if len(r) >= 4 and r[0] == 1 and r[1] == 77:
                 proto = r[3]
                 break
-        cmd = 8 if proto == 1 else 10
-        dev.send_feature_report(b"\x00" + bytes([cmd, 78]) + bytes(38))
+        dev.send_feature_report(b"\x00" + bytes([8 if proto == 1 else 10, 78]) + bytes(38))
         print("Running firmware found - switched it to the bootloader.")
         return True
     except Exception:
         return False
     finally:
         dev.close()
-
-
-def bootloader_present_in_windows():
-    """True if Windows currently sees the 4348:55E0 bootloader, even without a driver
-    (libusb can't see a device that has no driver)."""
-    if os.name != "nt":
-        return False
-    import ctypes
-    cfg = ctypes.WinDLL("cfgmgr32")
-    flags = 0x1 | 0x100                     # CM_GETIDLIST_FILTER_ENUMERATOR | _PRESENT
-    size = ctypes.c_ulong(0)
-    if cfg.CM_Get_Device_ID_List_SizeW(ctypes.byref(size), "USB", flags) != 0:
-        return False
-    buf = ctypes.create_unicode_buffer(size.value)
-    if cfg.CM_Get_Device_ID_ListW("USB", buf, size, flags) != 0:
-        return False
-    ids = buf[:size.value].split("\0")
-    return any("VID_4348&PID_55E0" in i.upper() for i in ids)
-
-
-def winusb_installed():
-    """True if some 4348:55E0 device node already uses WinUSB (driver set up before)."""
-    if os.name != "nt":
-        return True
-    ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-    r = subprocess.run([str(ps), "-NoProfile", "-Command",
-                        "Get-PnpDevice | Where-Object InstanceId -match 'VID_4348&PID_55E0' | ForEach-Object { "
-                        "(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName DEVPKEY_Device_Service).Data }"],
-                       capture_output=True, text=True)
-    return "winusb" in r.stdout.lower()
-
-
-DRIVER_STEPS = """
-The bootloader (USB ID 4348:55E0) needs the WinUSB driver. This is needed once per PC,
-and it can be installed without the macropad connected:
-
-  1. Zadig opens now (allow admin rights; it is downloaded on first use).
-  2. Menu  Device -> Create New Device
-  3. Name field (top): CH552 bootloader
-     USB ID fields:    4348    55E0     (leave the third box empty)
-  4. Driver (right of the green arrow): WinUSB
-  5. Click "Install Driver" and wait for "The driver was installed successfully".
-"""
 
 
 def open_zadig():
@@ -141,66 +108,101 @@ def open_zadig():
     os.startfile(str(zadig))                # goes through UAC, unlike Popen
 
 
-def ensure_driver():
-    if winusb_installed():
-        return
+def winusb_installed():
+    """True if some 4348:55E0 device node already uses WinUSB (driver set up before)."""
+    ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    r = subprocess.run([str(ps), "-NoProfile", "-Command",
+                        "Get-PnpDevice | Where-Object InstanceId -match 'VID_4348&PID_55E0' | ForEach-Object { "
+                        "(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName DEVPKEY_Device_Service).Data }"],
+                       capture_output=True, text=True)
+    return "winusb" in r.stdout.lower()
+
+
+def driver_missing():
     print(DRIVER_STEPS)
     open_zadig()
-    input("Press Enter here when Zadig says the driver was installed ...")
 
 
-def wait_for_bootloader(backend, seconds):
-    """Poll until libusb can see the bootloader. Windows may list the device a few
-    seconds before its driver is loaded, so only complain after a grace period."""
-    import usb.core
+def wait_windows(seconds):
+    """Wait for the bootloader and open it through WinUSB. Returns a transport or None."""
+    import winusb
     end = time.time() + seconds
-    seen_since = None
+    seen = None
     while time.time() < end:
-        dev = usb.core.find(idVendor=CH_VID, idProduct=CH_PID, backend=backend)
-        if dev is not None:
-            if seen_since:
-                print(f"  libusb opened it {time.time() - seen_since:.1f} s after Windows saw it")
-            return dev
-        if bootloader_present_in_windows():
-            if seen_since is None:
-                seen_since = time.time()
-                print("  bootloader detected by Windows, waiting for its driver ...")
-            elif time.time() - seen_since > 8:
-                if winusb_installed():
-                    print("\nThe bootloader uses WinUSB, but libusb still can't see it.")
-                    print("Please send this output to the developer:")
-                    for d in usb.core.find(find_all=True, backend=backend):
-                        print(f"  libusb sees {d.idVendor:04x}:{d.idProduct:04x}")
-                    sys.exit(1)
-                print("\nWindows sees the bootloader, but it has no WinUSB driver yet.")
-                print(DRIVER_STEPS)
-                open_zadig()
-                sys.exit("Install the driver, then run flash.bat again.")
-        elif seen_since is not None:
-            print("  bootloader disappeared again (it times out after ~10 s)")
-            seen_since = None
-        time.sleep(0.1)
+        inst = winusb.present_instances(CH_VID, CH_PID)
+        if inst:
+            if seen is None:
+                seen = time.time()
+                print("  bootloader connected")
+            if winusb.interface_guid(inst[0]) is None:
+                if time.time() - seen > 3:              # give Windows a moment to bind
+                    print("\nThe bootloader has no WinUSB driver yet.")
+                    driver_missing()
+                    sys.exit("Install the driver, then run flash.bat again.")
+            else:
+                try:
+                    return winusb.WinUsbDevice(inst[0])
+                except OSError:
+                    pass                                # interface not ready yet
+        elif seen is not None:
+            print(f"  bootloader went away after {time.time() - seen:.1f} s - enter it again")
+            seen = None
+        time.sleep(0.05)
     return None
 
 
-class Programmer:
+class PyUsbTransport:
+    """Non-Windows transport (pyusb + libusb)."""
+
     def __init__(self, dev):
         import usb.util
         dev.set_configuration()
         intf = dev.get_active_configuration()[(0, 0)]
         out = lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
-        inn = lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
         self.epout = usb.util.find_descriptor(intf, custom_match=out)
-        self.epin = usb.util.find_descriptor(intf, custom_match=inn)
+        self.epin = usb.util.find_descriptor(intf, custom_match=lambda e: not out(e))
+
+    def write(self, data):
+        self.epout.write(bytes(data))
+
+    def read(self, size=64):
+        return bytes(self.epin.read(size, 2000))
+
+    def close(self):
+        pass
+
+
+def wait_pyusb(seconds):
+    need("usb", "pyusb")
+    import usb.core
+    end = time.time() + seconds
+    while time.time() < end:
+        dev = usb.core.find(idVendor=CH_VID, idProduct=CH_PID)
+        if dev is not None:
+            return PyUsbTransport(dev)
+        time.sleep(0.1)
+    return None
+
+
+def wait_for_bootloader(seconds):
+    return wait_windows(seconds) if WINDOWS else wait_pyusb(seconds)
+
+
+# ===================================================================================
+# CH55x bootloader protocol (v2.x)
+# ===================================================================================
+class Programmer:
+    def __init__(self, transport):
+        self.t = transport
         self.chipid = 0
         self.bootloader = "?"
 
     def cmd(self, data):
-        self.epout.write(bytes(data))
-        return bytes(self.epin.read(64, 2000))
+        self.t.write(bytes(data))
+        return self.t.read(64)
 
     def detect(self):
-        r = self.cmd(DETECT_CHIP_CMD_V2)
+        r = self.cmd(DETECT_CHIP_CMD)
         if len(r) != 6:
             raise RuntimeError("chip identification failed (old v1 bootloader is not supported)")
         self.chipid = r[4]
@@ -208,7 +210,7 @@ class Programmer:
             raise RuntimeError(f"unexpected chip CH5{self.chipid - 30}, expected CH552")
         cfg = self.cmd((0xA7, 0x02, 0x00, 0x1F, 0x00))
         if len(cfg) != 30:
-            raise RuntimeError("could not read bootloader config")
+            raise RuntimeError("could not read the bootloader configuration")
         self.bootloader = f"{cfg[19]}.{cfg[20]}{cfg[21]}"
         key = (cfg[22] + cfg[23] + cfg[24] + cfg[25]) & 0xFF
         self.cmd(bytes([0xA3, 0x30, 0x00]) + bytes([key] * 0x30) + bytes(64 - 3 - 0x30))
@@ -233,12 +235,12 @@ class Programmer:
                     buf[x] ^= self.chipid
             r = self.cmd(buf)                       # full 64-byte packet, like chprog
             if r[4] not in (0x00, 0xFE, 0xF5):
-                raise RuntimeError(("write" if mode == MODE_WRITE_V2 else "verify") + f" failed at 0x{addr:04x}")
+                raise RuntimeError(("write" if mode == MODE_WRITE else "verify") + f" failed at 0x{addr:04x}")
             addr += n
             rest -= n
 
     def exit(self):
-        self.epout.write(bytes((0xA2, 0x01, 0x00, 0x01)))
+        self.t.write(bytes((0xA2, 0x01, 0x00, 0x01)))
 
 
 def main():
@@ -251,41 +253,40 @@ def main():
         sys.exit("firmware too large")
     print(f"Firmware: {path} ({len(data)} bytes)")
 
-    backend = libusb_backend()
-    import usb.core
+    if WINDOWS and not winusb_installed():
+        driver_missing()
+        input("Press Enter here when Zadig says the driver was installed ...")
 
-    dev = usb.core.find(idVendor=CH_VID, idProduct=CH_PID, backend=backend)
-    if dev is None:
-        ensure_driver()
-    if dev is None and try_software_bootloader():
-        dev = wait_for_bootloader(backend, 8)
-    if dev is None:
+    t = None
+    if try_software_bootloader():
+        t = wait_for_bootloader(10)
+    if t is None:
         print("\nWaiting for the bootloader (60 s) ...")
-        print("  stock firmware: open the case, short R12 (or P1.5 to GND) while plugging in USB")
-        print("  open firmware : hold key 1 while plugging in USB")
+        print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")
+        print("  Detent firmware: hold key 1 while plugging in USB")
         print("  The bootloader only stays about 10 s; flashing starts as soon as it shows up.")
-        dev = wait_for_bootloader(backend, 60)
-    if dev is None:
+        t = wait_for_bootloader(60)
+    if t is None:
         sys.exit("Bootloader not found.")
 
     try:
-        isp = Programmer(dev)
+        isp = Programmer(t)
         isp.detect()
-    except usb.core.USBError as e:
-        print(f"USB error: {e}")
-        print(DRIVER_STEPS)
-        open_zadig()
-        sys.exit(1)
-    print(f"Found CH552, bootloader v{isp.bootloader}")
-    print("Erasing ...")
-    isp.erase(len(data))
-    print("Writing ...")
-    isp.write(data, MODE_WRITE_V2)
-    print("Verifying ...")
-    isp.write(data, MODE_VERIFY_V2)
-    isp.exit()
+        print(f"Found CH552, bootloader v{isp.bootloader}")
+        print("Erasing ...")
+        isp.erase(len(data))
+        print("Writing ...")
+        isp.write(data, MODE_WRITE)
+        print("Verifying ...")
+        isp.write(data, MODE_VERIFY)
+        isp.exit()
+    finally:
+        t.close()
     print(f"\nDONE: {len(data)} bytes written and verified. The macropad restarts by itself.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (RuntimeError, OSError) as e:
+        sys.exit(f"error: {e}")
