@@ -6,6 +6,7 @@
   python detent.py watch                        live knob / keys / profile (Ctrl+C stops)
   python detent.py set 1 key1 key:ctrl+c        profile 1, key 1 -> Ctrl+C
   python detent.py set 2 right axis:lx:10       profile 2, knob -> gamepad stick X
+  python detent.py set 1 knob key:alt --now     own action right away (see below)
   python detent.py combo add knob key1 profile:1           hold knob + key 1
   python detent.py combo add key3 right scroll:-1 --profile 2
   python detent.py combo add key1 key1 key:esc  hold key 1 alone (long press)
@@ -20,6 +21,11 @@
   python detent.py actions                      list action and key names
 
 Inputs: key1 key2 key3 ... knob (press), right / left (knob turns).
+A key that starts combos (or has a long press) sends its own action when released,
+unless a combo was used. --now sends it on press and holds it while combos still
+work, e.g. knob = Alt with combos knob+right = Tab, knob+left = Shift+Tab for
+window switching. Without --now/--on-release, modifiers and gamepad buttons are
+sent right away and everything else on release.
 Changes are saved on the device right away. The device reconnects by itself when
 the gamepad has to be added or removed.
 
@@ -52,6 +58,7 @@ EFFECTS = ["off", "solid", "breathe", "rainbow", "press", "steering"]
 
 (ACT_NONE, ACT_KEY, ACT_MEDIA, ACT_MOUSE_BTN, ACT_SCROLL, ACT_MOUSE_MOVE, ACT_PAD_BTN,
  ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT) = range(11)
+ACT_TYPE_MASK, ACT_NOW = 0x1F, 0x80
 PROF_NEXT, PROF_PREV = 0xF0, 0xF1
 AXES = ["lx", "ly", "rx", "ry", "triggers"]
 AXIS_FREE = 0x80
@@ -94,6 +101,11 @@ KEYNAMES = {v: k for k, v in KEYCODES.items()}
 
 class ActionError(ValueError):
     pass
+
+
+def default_now(a):
+    """Modifier-only keys and gamepad buttons are held right away by default."""
+    return (a[0] == ACT_KEY and a[1] and not a[2]) or a[0] == ACT_PAD_BTN
 
 
 def _int8(v):
@@ -235,11 +247,18 @@ class Settings:
 
     def action(self, p, i):
         o = self._poff(p) + 4 + 3 * i
-        return tuple(self.b[o:o + 3])
+        return (self.b[o] & ACT_TYPE_MASK, self.b[o + 1], self.b[o + 2])
 
-    def set_action(self, p, i, a):
+    def now(self, p, i):
+        """Own action sent right away even when the button starts combos."""
+        return bool(self.b[self._poff(p) + 4 + 3 * i] & ACT_NOW)
+
+    def set_action(self, p, i, a, now=None):
+        """now=None picks the usual choice: right away for modifiers and gamepad buttons."""
+        if now is None:
+            now = default_now(a)
         o = self._poff(p) + 4 + 3 * i
-        self.b[o:o + 3] = bytes(a)
+        self.b[o:o + 3] = bytes([a[0] | (ACT_NOW if now and i < self.L.buttons else 0), a[1], a[2]])
 
     def color(self, p):
         o = self._poff(p)
@@ -314,7 +333,8 @@ class Settings:
                 "halfStep": bool(f & FLAG_HALFSTEP), "xbox360": bool(f & FLAG_XBOX360)},
             "profiles": [{"color": self.color(p), "light": self.effect(p),
                           "actions": {L.names[i]: format_action(self.action(p, i))
-                                      for i in range(L.inputs)}}
+                                      for i in range(L.inputs)},
+                          "rightAway": [L.names[i] for i in range(L.buttons) if self.now(p, i)]}
                          for p in range(L.profiles)],
             "combos": [{"hold": L.names[h], "then": L.names[t],
                         "profile": "all" if p == ALL_PROFILES else p + 1,
@@ -341,9 +361,11 @@ class Settings:
         for p, prof in enumerate(j.get("profiles", [])[:L.profiles]):
             self.set_color(p, prof.get("color", self.color(p)))
             self.set_effect(p, prof.get("light", self.effect(p)))
+            right_away = prof.get("rightAway")             # missing: usual choice per action
             for name, text in prof.get("actions", {}).items():
                 if name in L.names:
-                    self.set_action(p, L.input_index(name), parse_action(text))
+                    now = None if right_away is None else name in right_away
+                    self.set_action(p, L.input_index(name), parse_action(text), now)
         self.clear_combos()
         for c in j.get("combos", []):
             prof = ALL_PROFILES if c.get("profile", "all") == "all" else int(c["profile"]) - 1
@@ -425,7 +447,8 @@ def print_settings(s):
     for p in range(L.profiles):
         print(f"\nprofile {p + 1}     light {s.effect(p)} {s.color(p)}")
         for i in range(L.inputs):
-            print(f"  {L.names[i]:<10}  {format_action(s.action(p, i))}")
+            mark = "   (sent right away)" if i < L.buttons and s.now(p, i) else ""
+            print(f"  {L.names[i]:<10}  {format_action(s.action(p, i))}{mark}")
     combos = s.combos()
     print(f"\ncombos ({len(combos)} of {L.combos} used)")
     for n, h, t, p, a in combos:
@@ -524,9 +547,11 @@ def main(argv):
             print_settings(d.read())
         elif c == "watch":
             cmd_watch(d)
-        elif c == "set" and len(args) == 3:
+        elif c == "set" and len(args) >= 3:
+            now = True if "--now" in args else False if "--on-release" in args else None
+            args = [a for a in args if a not in ("--now", "--on-release")]
             s = d.read()
-            s.set_action(parse_profile(d, args[0]), L.input_index(args[1]), parse_action(args[2]))
+            s.set_action(parse_profile(d, args[0]), L.input_index(args[1]), parse_action(args[2]), now)
             apply(d, s)
         elif c == "combo" and args[:1] == ["add"] and len(args) >= 4:
             prof = ALL_PROFILES

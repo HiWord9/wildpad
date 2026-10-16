@@ -124,11 +124,22 @@ def test_gamepad():
     check(keys[6:8] == [0x06, 0] and rt.count(255) == 1, "gamepad: long press of key 1 -> 'c', no RT")
 
 
+def test_switch():
+    raw = simulate("sw", [TEST / "test_switch.c", *FIRMWARE], 0x300, 1 + 2 * 20,
+                   {"main.c": ["main=fw_main"], "settings.c": ["SET_load=SET_load_real"]})
+    reps = [(raw[1 + 2 * i], raw[2 + 2 * i]) for i in range(raw[0])]
+    alt, shift, tab = 0x04, 0x02, 0x2B
+    expected = [(alt, 0), (alt, tab), (alt, 0), (alt, tab), (alt, 0), (alt | shift, tab), (alt, 0), (0, 0)]
+    check(reps == expected, "right away: knob = Alt held, turn = Tab / Shift+Tab -> Alt+Tab window switching",
+          f"{[(hex(m), hex(k)) for m, k in reps]}")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     test_decoder()
     test_keys()
     test_gamepad()
+    test_switch()
     print(f"\n{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 

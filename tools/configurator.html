@@ -291,6 +291,8 @@ select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
 }
 .combo .then { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo .scope { font-size: 12px; color: var(--ink-2); white-space: nowrap; text-align: right; }
+.combo.replaced { opacity: .55; }
+.combo.replaced .then { text-decoration: line-through; text-decoration-thickness: 1px; }
 .inspector .combo { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr) 76px; }
 .empty { padding: 18px; text-align: center; color: var(--ink-2); border: 1.5px dashed var(--line); border-radius: 10px; font-size: 14px; }
 
@@ -528,7 +530,7 @@ const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offse
 const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9 };
 const FLAG = { INVERT: 1, HALF: 2, XBOX: 4 };
 const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10 };
-const PROF_NEXT = 0xF0, PROF_PREV = 0xF1, ALL = 7, EMPTY = 0xFF, AXIS_FREE = 0x80;
+const PROF_NEXT = 0xF0, PROF_PREV = 0xF1, ALL = 7, EMPTY = 0xFF, AXIS_FREE = 0x80, TYPE_MASK = 0x1F, NOW = 0x80;
 const EFFECTS = [
   ["off", "Off", "No light."],
   ["solid", "Solid", "Steady profile color."],
@@ -593,8 +595,9 @@ const KEY_BY_NAME = new Map([...KEYS.values()].map(k => [k.name, k]));
 const s8 = b => b > 127 ? b - 256 : b;
 const u8 = v => (Math.max(-127, Math.min(127, v | 0)) + 256) & 255;
 
+const MOD_ORDER = [8, 1, 4, 2, 128, 16, 64, 32];        // display order: Win+Ctrl+Alt+Shift
 function keyText(mods, code, short) {
-  const parts = MODS.filter(m => mods & m[0]).map(m => short ? m[1].replace("Right ", "R") : m[1]);
+  const parts = MOD_ORDER.filter(bit => mods & bit).map(bit => MODS.find(m => m[0] === bit)[1]).map(n => short ? n.replace("Right ", "R") : n);
   if (code) parts.push(KEYS.get(code)?.label ?? `Key 0x${code.toString(16)}`);
   return parts.join(short ? "+" : " + ");
 }
@@ -676,6 +679,8 @@ function textToAction(text) {
 function A(t, p1 = 0, p2 = 0) { return { t, p1, p2 }; }
 const sameAction = (a, b) => a.t === b.t && a.p1 === b.p1 && a.p2 === b.p2;
 const heldType = t => t === T.KEY || t === T.MEDIA || t === T.MOUSE || t === T.PAD;
+// usual choice for a key that starts combos: hold modifiers and gamepad buttons right away
+const defaultNow = a => (a.t === T.KEY && a.p1 && !a.p2) || a.t === T.PAD;
 
 // =============================================================================== settings model
 // Layout comes from the INFO command, so boards with more keys work unchanged.
@@ -712,8 +717,14 @@ class Model {
   constructor(L, bytes) { this.L = L; this.b = new Uint8Array(bytes); }
   clone() { return new Model(this.L, this.b); }
   po(p) { return this.L.profOff + p * this.L.profSize; }
-  action(p, i) { const o = this.po(p) + 4 + 3 * i; return A(this.b[o], this.b[o + 1], this.b[o + 2]); }
-  setAction(p, i, a) { const o = this.po(p) + 4 + 3 * i; this.b[o] = a.t; this.b[o + 1] = a.p1; this.b[o + 2] = a.p2; }
+  action(p, i) { const o = this.po(p) + 4 + 3 * i; return A(this.b[o] & TYPE_MASK, this.b[o + 1], this.b[o + 2]); }
+  // now: send a button's own action on press even when it starts combos (undefined = usual choice)
+  setAction(p, i, a, now) {
+    const o = this.po(p) + 4 + 3 * i, flag = i < this.L.buttons && (now ?? defaultNow(a)) ? NOW : 0;
+    this.b[o] = a.t | flag; this.b[o + 1] = a.p1; this.b[o + 2] = a.p2;
+  }
+  now(p, i) { return i < this.L.buttons && !!(this.b[this.po(p) + 4 + 3 * i] & NOW); }
+  setNow(p, i, on) { const o = this.po(p) + 4 + 3 * i; this.b[o] = (this.b[o] & ~NOW) | (on ? NOW : 0); }
   color(p) { const o = this.po(p); return "#" + [0, 1, 2].map(k => this.b[o + k].toString(16).padStart(2, "0")).join(""); }
   setColor(p, hex) { const o = this.po(p); for (let k = 0; k < 3; k++) this.b[o + k] = parseInt(hex.substr(1 + 2 * k, 2), 16); }
   effect(p) { return Math.min(this.b[this.po(p) + 3], EFFECTS.length - 1); }
@@ -729,7 +740,11 @@ class Model {
   setCombo(slot, c) { const o = this.L.comboOff + 4 * slot; this.b.set([c.held << 4 | c.trig, c.prof << 5 | c.a.t, c.a.p1, c.a.p2], o); }
   delCombo(slot) { this.b.fill(EMPTY, this.L.comboOff + 4 * slot, this.L.comboOff + 4 * slot + 4); }
   freeSlot() { for (let n = 0; n < this.L.combos; n++) if (this.b[this.L.comboOff + 4 * n] === EMPTY) return n; return -1; }
-  findCombo(held, trig, p) { return this.combos().find(c => c.held === held && c.trig === trig && (c.prof === p || c.prof === ALL)); }
+  // a combo of profile p wins over an all-profiles combo with the same controls (as in the firmware)
+  findCombo(held, trig, p) {
+    const same = this.combos().filter(c => c.held === held && c.trig === trig);
+    return same.find(c => c.prof === p) || same.find(c => c.prof === ALL);
+  }
   startsCombos(h, p) { return this.combos().some(c => c.held === h && c.trig !== h && (c.prof === p || c.prof === ALL)); }
   usesGamepad() {
     for (let p = 0; p < this.L.profiles; p++) for (let i = 0; i < this.L.inputs; i++) { const t = this.action(p, i).t; if (t === T.PAD || t === T.AXIS) return true; }
@@ -748,7 +763,8 @@ class Model {
         clicksPerTurn: b[S.DETENTS], startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED],
         reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF), xbox360: !!(f & FLAG.XBOX) },
       profiles: Array.from({ length: L.profiles }, (_, p) => ({ color: this.color(p), light: EFFECTS[this.effect(p)][0],
-        actions: Object.fromEntries(names.map((n, i) => [n, actionToText(this.action(p, i))])) })),
+        actions: Object.fromEntries(names.map((n, i) => [n, actionToText(this.action(p, i))])),
+        rightAway: names.filter((n, i) => this.now(p, i)) })),
       combos: this.combos().map(c => ({ hold: L.fileName(c.held), then: L.fileName(c.trig),
         profile: c.prof === ALL ? "all" : c.prof + 1, action: actionToText(c.a) })),
     };
@@ -769,7 +785,7 @@ class Model {
       const e = EFFECTS.findIndex(x => x[0] === pr.light); if (e >= 0) this.setEffect(p, e);
       for (const [name, text] of Object.entries(pr.actions || {})) {
         let i; try { i = L.fromFileName(name); } catch { continue; }
-        this.setAction(p, i, textToAction(text));
+        this.setAction(p, i, textToAction(text), Array.isArray(pr.rightAway) ? pr.rightAway.includes(name) : undefined);
       }
     });
     for (let n = 0; n < L.combos; n++) this.delCombo(n);
@@ -783,28 +799,30 @@ class Model {
   }
 }
 
-// Factory settings, same as SET_defaults() in firmware/src/settings.c
+// Factory settings, same bytes as SET_defaults() in firmware/src/settings.c
 function factory(L) {
   const m = new Model(L, new Uint8Array(L.size));
   m.b.fill(EMPTY, L.comboOff, L.size);
   m.b.set([0xA5, SVER, 0, 128, 30, 5, 4, 20, 0, 5], 0);
-  applyPreset(m, 0, "media"); applyPreset(m, 1, "editing"); applyPreset(m, 2, "mouse");
   const K = L.knob;
   let slot = 0;
   L.keys.slice(0, 3).forEach((k, n) => { if (n < L.profiles) m.setCombo(slot++, { held: K, trig: k.i, prof: ALL, a: A(T.PROFILE, n, 0) }); });
   m.setCombo(slot++, { held: K, trig: L.right, prof: ALL, a: A(T.LIGHT, 1) });
   m.setCombo(slot++, { held: K, trig: L.left, prof: ALL, a: A(T.LIGHT, 2) });
+  ["media", "editing", "windows"].slice(0, L.profiles).forEach((w, p) => applyPreset(m, p, w));
   return m;
 }
 
 const PRESETS = [
-  ["media", "Media controls"], ["editing", "Copy, paste and scroll"], ["mouse", "Mouse buttons"],
-  ["gamepad", "Gamepad with knob axis"], ["empty", "Empty"],
+  ["media", "Media controls"], ["editing", "Copy, paste and scroll"], ["windows", "Switch windows and tabs"],
+  ["mouse", "Mouse buttons"], ["gamepad", "Gamepad with knob axis"], ["empty", "Empty"],
 ];
 function applyPreset(m, p, which) {
   const L = m.L, k = L.keys.map(x => x.i), set = (i, a) => { if (i !== undefined) m.setAction(p, i, a); };
-  const colors = { media: "#00aaff", editing: "#ff8c00", mouse: "#dc00ff", gamepad: "#36d03a", empty: m.color(p) };
+  const colors = { media: "#00aaff", editing: "#ff8c00", windows: "#00e0b0", mouse: "#dc00ff", gamepad: "#36d03a", empty: m.color(p) };
   for (let i = 0; i < L.inputs; i++) m.setAction(p, i, A(T.NONE));
+  m.combos().filter(c => c.prof === p).forEach(c => m.delCombo(c.slot));   // a preset replaces the whole profile
+  const combo = (held, trig, a) => { const slot = m.freeSlot(); if (slot >= 0) m.setCombo(slot, { held, trig, prof: p, a }); };
   m.setColor(p, colors[which]); m.setEffect(p, 1);
   if (which === "media") {
     set(k[0], A(T.MEDIA, 0xB6)); set(k[1], A(T.MEDIA, 0xCD)); set(k[2], A(T.MEDIA, 0xB5));
@@ -812,6 +830,11 @@ function applyPreset(m, p, which) {
   } else if (which === "editing") {
     set(k[0], A(T.KEY, 1, 0x06)); set(k[1], A(T.KEY, 1, 0x19)); set(k[2], A(T.KEY, 1, 0x1D));
     set(L.knob, A(T.KEY, 0, 0x28)); set(L.right, A(T.SCROLL, 0xFF, 0)); set(L.left, A(T.SCROLL, 1, 0));
+  } else if (which === "windows") {
+    // hold the knob and turn: Alt+Tab window switching (Alt is held right away); turn alone: browser tabs
+    set(k[0], A(T.KEY, 8, 0x2B)); set(k[1], A(T.KEY, 8, 0x07)); set(k[2], A(T.KEY, 8 | 2, 0x16));
+    set(L.knob, A(T.KEY, 4, 0)); set(L.right, A(T.KEY, 1, 0x2B)); set(L.left, A(T.KEY, 1 | 2, 0x2B));
+    combo(L.knob, L.right, A(T.KEY, 0, 0x2B)); combo(L.knob, L.left, A(T.KEY, 2, 0x2B));
   } else if (which === "mouse") {
     set(k[0], A(T.MOUSE, 1)); set(k[1], A(T.MOUSE, 4)); set(k[2], A(T.MOUSE, 2));
     set(L.knob, A(T.MOUSE, 8)); set(L.right, A(T.SCROLL, 0, 1)); set(L.left, A(T.SCROLL, 0, 0xFF));
@@ -1058,7 +1081,7 @@ function renderProfiles() {
     h("option", { value: "", text: "Fill with a preset…" }), PRESETS.map(([k, n]) => h("option", { value: k, text: n })));
   const copySel = h("select", { class: "plain", "aria-label": "Copy another profile into this one", onchange: e => {
       const v = +e.target.value; e.target.value = "";
-      change(m => { for (let i = 0; i < L.inputs; i++) m.setAction(prof, i, m.action(v, i)); m.setEffect(prof, m.effect(v)); }, "copy");
+      change(m => { for (let i = 0; i < L.inputs; i++) m.setAction(prof, i, m.action(v, i), m.now(v, i)); m.setEffect(prof, m.effect(v)); }, "copy");
       toast(`Copied profile ${v + 1} into profile ${prof + 1}`);
     } },
     h("option", { value: "", text: "Copy from…" }),
@@ -1167,19 +1190,38 @@ function renderInspector() {
   box.append(h("div", { class: "panel-h insp-title" }, h("h2", { text: `Key ${k.n}` }),
     h("span", { class: "pressed-tag", id: "pressedTag", text: "pressed" })), body);
 
-  const deferred = model.startsCombos(i, prof) || model.findCombo(i, i, prof);
   body.append(field("When pressed", null, actionEditor(`press${i}`, model.action(prof, i), a => change(m => m.setAction(prof, i, a), `press${i}`), { input: i })));
-  if (deferred) body.lastChild.append(h("p", { class: "note", text: `Key ${k.n} starts combos or has a hold action, so this is sent when you let go.` }));
+  const timing = pressTiming(i, `Key ${k.n}`);
+  if (timing) body.lastChild.append(timing);
 
   const long = model.findCombo(i, i, prof);
   const holdMs = model.b[S.HOLD] * 10;
-  body.append(field("When held", `${holdMs / 1000} s or longer`, actionEditor(`long${i}`, long ? long.a : A(T.NONE),
-    a => change(m => setLongPress(m, i, a, long), `long${i}`), { input: i, allowNone: "Same as pressed" })));
+  const longOff = model.now(prof, i) && isCombiner(i);
+  body.append(field("When held", `${holdMs / 1000} s or longer`, longOff
+    ? h("p", { class: "note", style: "margin:0", text: long ? `${describe(long.a)}, but not while the action above is sent right away.` : "Not available while the action above is sent right away." })
+    : actionEditor(`long${i}`, long ? long.a : A(T.NONE), a => change(m => setLongPress(m, i, a, long), `long${i}`), { input: i, allowNone: "Same as pressed" })));
 
   const mine = model.combos().filter(c => c.held === i && c.trig !== i && (c.prof === prof || c.prof === ALL));
   const list = h("div", { class: "combo-list" }, mine.map(c => comboRow(c, true)));
   body.append(field(`While key ${k.n} is held`, null, mine.length ? list : h("p", { class: "note", style: "margin:0", text: "No combos yet." }),
     h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => addCombo(i) }, "Add combo with this key"))));
+}
+
+// Does button i start combos or have a long press (so its own action has to wait)?
+const isCombiner = i => model.startsCombos(i, prof) || !!model.findCombo(i, i, prof);
+
+// "Right away" / "When released" choice for a button that starts combos
+function pressTiming(i, name) {
+  if (!isCombiner(i)) return null;
+  const now = model.now(prof, i), a = model.action(prof, i);
+  if (a.t === T.NONE) return null;
+  const seg = h("div", { class: "seg two", style: "margin-top:10px" },
+    h("button", { "aria-pressed": now ? "true" : "false", onclick: () => change(m => m.setNow(prof, i, true), `now${i}`) }, "Right away"),
+    h("button", { "aria-pressed": now ? "false" : "true", onclick: () => change(m => m.setNow(prof, i, false), `now${i}`) }, "When released"));
+  const text = now
+    ? `${name} sends this on press and holds it while you hold ${name === "The knob" ? "it" : "the key"}; combos work on top of it. Right for Alt, Ctrl, Shift and gamepad buttons, e.g. Alt here with Tab on a combo switches windows.`
+    : `${name} starts combos, so this is sent when you let go, and only if you didn't use a combo.`;
+  return h("div", {}, seg, h("p", { class: "note", text }));
 }
 
 function setLongPress(m, i, a, existing) {
@@ -1225,7 +1267,8 @@ function renderKnobInspector(box) {
       h("span", { class: "muted small", text: "Tip: set the knob press to “Center the knob axis”." })));
   }
   body.append(field("When pressed", null, actionEditor(`press${L.knob}`, model.action(prof, L.knob), a => change(m => m.setAction(prof, L.knob, a), `press${L.knob}`), { input: L.knob })));
-  if (model.startsCombos(L.knob, prof)) body.lastChild.append(h("p", { class: "note", text: "The knob starts combos, so its press is sent when you let go." }));
+  const timing = pressTiming(L.knob, "The knob");
+  if (timing) body.lastChild.append(timing);
 
   const mine = model.combos().filter(c => c.held === L.knob && c.trig !== L.knob && (c.prof === prof || c.prof === ALL));
   body.append(field("While the knob is held", null,
@@ -1390,11 +1433,12 @@ function comboWhen(c) {
 }
 
 function comboRow(c, compact) {
-  return h("button", { class: "combo", "data-selected": sel.kind === "combo" && sel.slot === c.slot ? "true" : "false",
+  const replaced = c.prof === ALL && model.combos().some(x => x.prof === prof && x.held === c.held && x.trig === c.trig);
+  return h("button", { class: "combo" + (replaced ? " replaced" : ""), title: replaced ? `Profile ${prof + 1} has its own combo for these controls` : null, "data-selected": sel.kind === "combo" && sel.slot === c.slot ? "true" : "false",
       onclick: () => select({ kind: "combo", slot: c.slot }) },
     h("span", { class: "when" }, compact && c.held !== c.trig ? [h("span", { class: "kbd", text: L.name(c.trig) })] : comboWhen(c)),
     h("span", { class: "then", text: describe(c.a) }),
-    h("span", { class: "scope", text: c.prof === ALL ? "all profiles" : "" }));
+    h("span", { class: "scope", text: replaced ? "replaced here" : c.prof === ALL ? "all profiles" : "" }));
 }
 
 function renderCombos() {
@@ -1443,11 +1487,19 @@ function renderComboInspector(box) {
     h("button", { "aria-pressed": c.prof !== ALL ? "true" : "false", onclick: () => upd({ prof: c.prof === ALL ? prof : c.prof }) }, `Profile ${(c.prof === ALL ? prof : c.prof) + 1} only`),
     h("button", { "aria-pressed": c.prof === ALL ? "true" : "false", onclick: () => upd({ prof: ALL }) }, "All profiles"));
   body.append(field("Works in", null, scope));
-  const twin = model.combos().find(x => x.slot !== c.slot && x.held === c.held && x.trig === c.trig &&
-    (x.prof === c.prof || x.prof === ALL || c.prof === ALL));
+  const others = model.combos().filter(x => x.slot !== c.slot && x.held === c.held && x.trig === c.trig);
+  const twin = others.find(x => x.prof === c.prof);
   if (twin) body.append(h("p", { class: "note", style: "color:var(--danger)", text: `Another combo uses the same controls (${describe(twin.a)}). The one higher in the list wins; change “Then” or remove one.` }));
-  if (c.held !== c.trig && c.trig < L.buttons)
-    body.append(h("p", { class: "note", text: `${L.name(c.held)} still does its own action when pressed on its own; that action is sent when you let go.` }));
+  else if (c.prof !== ALL && others.some(x => x.prof === ALL))
+    body.append(h("p", { class: "note", text: `In profile ${c.prof + 1} this replaces the all-profiles combo for the same controls (${describe(others.find(x => x.prof === ALL).a)}).` }));
+  else if (c.prof === ALL && others.length)
+    body.append(h("p", { class: "note", text: `Profile ${others.map(x => x.prof + 1).join(", ")} has its own combo for these controls, which wins there.` }));
+  if (c.held !== c.trig) {
+    const own = model.action(prof, c.held);
+    if (own.t !== T.NONE) body.append(h("p", { class: "note", text: model.now(prof, c.held)
+      ? `${L.name(c.held)} holds its own action (${describe(own)}) from the moment you press it; this combo works on top of it.`
+      : `${L.name(c.held)} still does its own action (${describe(own)}) when pressed on its own; that is sent when you let go.` }));
+  }
   if (c.held === c.trig) body.append(h("p", { class: "note", text: `Hold ${L.name(c.held)} for ${model.b[S.HOLD] / 100} s. A shorter press does its normal action.` }));
 }
 

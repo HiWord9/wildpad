@@ -8,12 +8,16 @@
 __xdata uint8_t cfg[SETTINGS_SIZE];
 
 #define KNOB        BOARD_KNOB_BUTTON
-#define CTRL        0x01                // left Ctrl modifier bit
+#define CTRL        0x01                // modifier bits
+#define SHIFT       0x02
+#define ALT         0x04
+#define WIN         0x08
 #define ALL         COMBO_ALL_PROFILES
 
-// Factory settings. Profile 1: media keys, profile 2: editing, profile 3: mouse.
-// In every profile: hold the knob and press key N for profile N, hold the knob and
-// turn it to change the light brightness.
+// Factory settings. Profile 1: media keys, profile 2: editing, profile 3: windows
+// and tabs. In every profile: hold the knob and press key N for profile N, hold the
+// knob and turn it to change the light brightness. Profile 3 replaces that: the knob
+// holds Alt right away and turning sends Tab / Shift+Tab, i.e. Alt+Tab switching.
 static __code uint8_t DEF_HEADER[10] = {
   SETTINGS_MAGIC, SETTINGS_VERSION, 0, 128, 30, 5, 4, 20, 0, 5
 };
@@ -21,7 +25,7 @@ static __code uint8_t DEF_HEADER[10] = {
 static __code uint8_t DEF_COLORS[3][4] = {
   {0, 170, 255, LED_SOLID},             // cyan
   {255, 140, 0, LED_SOLID},             // amber
-  {220, 0, 255, LED_SOLID},             // violet
+  {0, 224, 176, LED_SOLID},             // teal
 };
 
 // {profile, input, type, p1, p2}
@@ -38,12 +42,12 @@ static __code uint8_t DEF_ACTIONS[][5] = {
   {1, KNOB,     ACT_KEY, 0, 0x28},        // Enter
   {1, IN_RIGHT, ACT_SCROLL, 0xFF, 0},     // scroll down
   {1, IN_LEFT,  ACT_SCROLL, 1, 0},        // scroll up
-  {2, 0,        ACT_MOUSE_BTN, 1, 0},     // left click
-  {2, 1,        ACT_MOUSE_BTN, 4, 0},     // middle click
-  {2, 2,        ACT_MOUSE_BTN, 2, 0},     // right click
-  {2, KNOB,     ACT_MOUSE_BTN, 8, 0},     // back
-  {2, IN_RIGHT, ACT_SCROLL, 0, 1},        // scroll right
-  {2, IN_LEFT,  ACT_SCROLL, 0, 0xFF},     // scroll left
+  {2, 0,        ACT_KEY, WIN, 0x2B},      // Win+Tab: task view
+  {2, 1,        ACT_KEY, WIN, 0x07},      // Win+D: show desktop
+  {2, 2,        ACT_KEY, WIN | SHIFT, 0x16},   // Win+Shift+S: screenshot
+  {2, KNOB,     ACT_KEY | ACT_NOW, ALT, 0},    // Alt, held right away
+  {2, IN_RIGHT, ACT_KEY, CTRL, 0x2B},     // Ctrl+Tab: next browser tab
+  {2, IN_LEFT,  ACT_KEY, CTRL | SHIFT, 0x2B},  // Ctrl+Shift+Tab: previous tab
 };
 
 // {held, trigger, profile, type, p1, p2}
@@ -53,6 +57,8 @@ static __code uint8_t DEF_COMBOS[][6] = {
   {KNOB, 2,        ALL, ACT_PROFILE, 2, PROF_SWITCH},
   {KNOB, IN_RIGHT, ALL, ACT_LIGHT, LIGHT_BRIGHTER, 0},
   {KNOB, IN_LEFT,  ALL, ACT_LIGHT, LIGHT_DIMMER, 0},
+  {KNOB, IN_RIGHT, 2,   ACT_KEY, 0, 0x2B},       // with Alt held: Alt+Tab
+  {KNOB, IN_LEFT,  2,   ACT_KEY, SHIFT, 0x2B},   // Alt+Shift+Tab
 };
 
 void SET_defaults(__xdata uint8_t* dst) {
@@ -72,7 +78,8 @@ void SET_defaults(__xdata uint8_t* dst) {
   q = dst + COMBOS_OFFSET;
   for(i = 0; i < sizeof(DEF_COMBOS) / 6 && i < N_COMBOS; i++) {
     d = DEF_COMBOS[i];
-    if(d[1] < BOARD_BUTTONS && d[1] >= N_PROFILES && d[3] == ACT_PROFILE) continue;
+    if(d[3] == ACT_PROFILE && d[4] >= N_PROFILES) continue;          // no such profile
+    if(d[2] != ALL && d[2] >= N_PROFILES) continue;
     q[0] = (d[0] << 4) | d[1];
     q[1] = (d[2] << 5) | d[3];
     q[2] = d[4];
@@ -102,7 +109,7 @@ uint8_t SET_valid(__xdata uint8_t* p) {
     q = p + PROFILES_OFFSET + i * PROFILE_SIZE;
     if(q[3] > LED_LAST) return 0;
     for(j = 0; j < N_INPUTS; j++)
-      if(q[PROFILE_HEAD + 3 * j] > ACT_LAST) return 0;
+      if((q[PROFILE_HEAD + 3 * j] & ACT_TYPE_MASK) > ACT_LAST) return 0;
   }
   for(i = 0; i < N_COMBOS; i++) {
     q = p + COMBOS_OFFSET + i * COMBO_SIZE;
@@ -126,7 +133,7 @@ uint8_t SET_usesGamepad(__xdata uint8_t* p) {
   for(i = 0; i < N_PROFILES; i++) {
     q = p + PROFILES_OFFSET + i * PROFILE_SIZE + PROFILE_HEAD;
     for(j = 0; j < N_INPUTS; j++)
-      if(isPadType(q[3 * j])) return 1;
+      if(isPadType(q[3 * j] & ACT_TYPE_MASK)) return 1;
   }
   for(i = 0; i < N_COMBOS; i++) {
     q = p + COMBOS_OFFSET + i * COMBO_SIZE;

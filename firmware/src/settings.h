@@ -77,6 +77,9 @@
 #define ACT_PROFILE         9           // p1 = profile or PROF_NEXT / PROF_PREV, p2 = PROF_*
 #define ACT_LIGHT           10          // p1 = LIGHT_*
 #define ACT_LAST            ACT_LIGHT
+#define ACT_TYPE_MASK       0x1F
+#define ACT_NOW             0x80        // button's own action: send on press even when the
+                                        // button starts combos (stays held, combos still work)
 
 #define PROF_NEXT           0xF0
 #define PROF_PREV           0xF1

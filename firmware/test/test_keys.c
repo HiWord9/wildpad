@@ -75,8 +75,11 @@ static uint16_t t;                            // ms since the script started
 #define KEY2(d)  (d ? (P1 &= ~0x80) : (P1 |= 0x80))     // P1.7
 #define KNOB(d)  (d ? (P3 &= ~0x08) : (P3 |= 0x08))     // P3.3
 
-static void turnCW(uint16_t start, uint8_t clicks) {      // 10 ms per phase
-  if(t >= start && t < start + clicks * 40 && (t - start) % 10 == 0) {
+// No '%' or '/' in the timer ISR: SDCC's library division routines are not reentrant
+// and would corrupt the firmware's own divisions running in the main loop.
+static uint8_t tick10;                        // counts 0..9, phase steps happen at 0
+static void turnCW(uint16_t start, uint16_t end) {        // 10 ms per phase, 40 per click
+  if(t >= start && t < end && tick10 == 0) {
     P3 = (P3 & 0xFC) | CW[phase];
     if(++phase == 4) phase = 0;
   }
@@ -86,6 +89,7 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
   TH0 = (65536 - 1000) >> 8;
   TL0 = (65536 - 1000) & 0xFF;
   t++;
+  if(++tick10 == 10) tick10 = 0;
   if(t < 200) return;                         // let the firmware boot
 
   if(detent < 35) {                           // A: one phase every 3 ms
@@ -99,7 +103,7 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
   if(t == 1600) KNOB(1);                      // B: 100 ms press
   if(t == 1700) KNOB(0);
   if(t == 2200) KNOB(1);                      // C: hold knob + 3 clicks
-  turnCW(2500, 3);
+  turnCW(2500, 2500 + 3 * 40);
   if(t == 2900) KNOB(0);
   if(t == 3200) KNOB(1);                      // D: hold knob + key 2
   if(t == 3300) KEY2(1);
@@ -107,7 +111,7 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
   if(t == 3500) KNOB(0);
   if(t == 3800) KEY1(1);                      // E: key 1
   if(t == 3900) KEY1(0);
-  turnCW(4100, 1);                            // F: one click
+  turnCW(4100, 4100 + 1 * 40);                // F: one click
   brightness = cfg[S_BRIGHTNESS];
   if(t == 4400) done();
 }

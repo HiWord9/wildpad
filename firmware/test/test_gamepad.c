@@ -94,7 +94,7 @@ void USB_padSend(__xdata uint8_t* buf, uint8_t len) {
 // ---------------- the user (Timer0, 1 ms ticks) ----------------
 static __code uint8_t CW[4]  = {1, 0, 2, 3};
 static __code uint8_t CCW[4] = {2, 0, 1, 3};
-static uint8_t phase, detent, slow;
+static uint8_t phase, detent, slow, tick10;   // no '%' in the ISR (see test_keys.c)
 static uint16_t t;
 
 #define KEY1(d)  (d ? (P1 &= ~0x02) : (P1 |= 0x02))     // P1.1, active low
@@ -106,6 +106,7 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
   TH0 = (65536 - 1000) >> 8;
   TL0 = (65536 - 1000) & 0xFF;
   t++;
+  if(++tick10 == 10) tick10 = 0;
   if(t < 200) return;
 
   if(detent < 33) {                           // 13 CW then 20 CCW, 6 ms per phase
@@ -123,7 +124,7 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
   if(t == 1900) KEY2(1);                      // key 2: A
   if(t == 2000) KEY2(0);
   if(t == 2200) KEY3(1);                      // hold key 3 + 2 CW clicks
-  if(t >= 2300 && t < 2380 && (t - 2300) % 10 == 0) {
+  if(t >= 2300 && t < 2380 && tick10 == 0) {
     P3 = (P3 & 0xFC) | CW[phase];
     if(++phase == 4) phase = 0;
   }

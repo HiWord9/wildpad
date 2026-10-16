@@ -7,7 +7,8 @@
 //    buttons / scrolling / movement, gamepad buttons, or turn the knob into an
 //    absolute gamepad axis
 //  - combos: while any key is held, any other key or the knob does something else;
-//    long press of a key does something else
+//    long press of a key does something else. A key that starts combos sends its own
+//    action on release, or right away and held (ACT_NOW, e.g. Alt for Alt+Tab)
 //  - up to 3 profiles with their own color and light effect
 //  - the gamepad interface is added automatically when a profile uses it
 //  - configuration over a vendor HID feature report, stored in Data-Flash
@@ -49,6 +50,7 @@ static __xdata uint16_t brightTime;
 static __xdata uint16_t profTime;                 // when the profile last changed (LED flash)
 
 static __xdata action_t comboAct;         // scratch copy of a combo action
+static __xdata action_t baseAct;          // scratch copy of a profile action
 static __xdata int16_t axisValue;                // cached gamepad axis value for rel
 static __xdata int16_t lastRel = 0x7FFF;         // rel the cached axis value was computed for
 static __xdata uint8_t lastRange;                // clicks from center to full lock
@@ -60,8 +62,17 @@ static void applySettings(void) {
   if(prof >= N_PROFILES) prof = 0;
 }
 
+// The active profile's action for an input, without the ACT_NOW flag
 static __xdata action_t* baseAction(uint8_t in) {
-  return ACTION(prof, in);
+  __xdata action_t* a = ACTION(prof, in);
+  baseAct.type = a->type & ACT_TYPE_MASK;
+  baseAct.p1 = a->p1;
+  baseAct.p2 = a->p2;
+  return &baseAct;
+}
+
+static __bit sendsNow(uint8_t in) {
+  return (ACTION(prof, in)->type & ACT_NOW) ? 1 : 0;
 }
 
 static __bit axisMode(void) {
@@ -80,21 +91,24 @@ static void setProfile(uint8_t p) {
 // ===================================================================================
 // Combos
 // ===================================================================================
-// Find the combo "while held, trig does ..." in the active profile (or all profiles)
-// and copy its action to comboAct. held == trig is the long press of that key.
+// Find the combo "while held, trig does ..." and copy its action to comboAct.
+// held == trig is the long press of that key. A combo of the active profile wins
+// over an all-profiles combo with the same controls.
 static __xdata action_t* findCombo(uint8_t held, uint8_t trig) {
   uint8_t i, key = (held << 4) | trig, p;
   __xdata uint8_t* c = cfg + COMBOS_OFFSET;
+  __xdata uint8_t* any = 0;
   for(i = 0; i < N_COMBOS; i++, c += COMBO_SIZE) {
     if(c[0] != key) continue;
     p = c[1] >> 5;
-    if(p != prof && p != COMBO_ALL_PROFILES) continue;
-    comboAct.type = c[1] & 0x1F;
-    comboAct.p1 = c[2];
-    comboAct.p2 = c[3];
-    return &comboAct;
+    if(p == prof) { any = c; break; }
+    if(p == COMBO_ALL_PROFILES && !any) any = c;
   }
-  return 0;
+  if(!any) return 0;
+  comboAct.type = any[1] & ACT_TYPE_MASK;
+  comboAct.p1 = any[2];
+  comboAct.p2 = any[3];
+  return &comboAct;
 }
 
 // Does button h start combos with other inputs (so its own action waits for release)?
@@ -419,6 +433,7 @@ static void BTN_task(void) {
           else LED_flash(i);
           a = heldCombo(i);
           if(a) startAction(i, a);
+          else if(sendsNow(i)) startAction(i, baseAction(i));   // held now, combos still work
           else if(startsCombos(i) || findCombo(i, i)) {
             bstate[i] = BS_PENDING;
             btime[i] = now;
