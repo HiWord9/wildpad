@@ -87,7 +87,7 @@ and *knob left* (B + 1). Offsets below are for the 3-key board (B = 4, 3 profile
 | 8 | 1 | profile after power-up (0-based) |
 | 9 | 1 | light animation speed (1–10) |
 | 10 | 2 | reserved |
-| 12 | 22 × 3 | profiles: red, green, blue, light effect, then one action per input |
+| 12 | 22 × 3 | profiles: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see Combos) |
 | 78 | 4 × 12 | combos |
 | 126 | 1 | reserved |
 | 127 | 1 | checksum: sum of bytes 0–126, modulo 256 |
@@ -103,7 +103,14 @@ is a long press of that button. Profile 7 means all profiles. An unused slot sta
 with `0xFF`.
 
 A button that starts combos or has a long press sends its own action when it is
-released (as a tap), unless a combo was used while it was held.
+released (as a tap), unless a combo was used while it was held. If bit `0x80` of the
+button's action type in the profile is set ("right away"), the action is pressed at
+once and held until release instead, and combos work on top of it; a long press is
+then ignored. Example: knob = Alt right away, knob + right = Tab, knob + left =
+Shift+Tab gives Alt+Tab window switching.
+
+A combo of the active profile wins over an all-profiles combo with the same held
+input and trigger.
 
 ### Actions (3 bytes: type, p1, p2)
 
@@ -137,9 +144,12 @@ present whenever any profile or combo uses type 6 or 7.
                "reverseKnob": false, "halfStep": false, "xbox360": false },
   "profiles": [ { "color": "#00aaff", "light": "solid",
                   "actions": { "key1": "media:previous-track", "knob": "media:mute",
-                               "right": "media:volume-up", "left": "media:volume-down" } } ],
+                               "right": "media:volume-up", "left": "media:volume-down" },
+                  "rightAway": [] } ],
   "combos": [ { "hold": "knob", "then": "key1", "profile": "all", "action": "profile:1" } ]
 }
 ```
 
-Action texts are listed by `detent.py actions`.
+Action texts are listed by `detent.py actions`. `rightAway` lists the buttons whose
+own action is sent right away; when it is missing, modifier-only keys and gamepad
+buttons are sent right away and everything else on release.

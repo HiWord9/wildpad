@@ -20,7 +20,10 @@ any speed, and its app can only assign a key per button. Detent replaces both.
   a gamepad button, switch profiles or control the lights.
 - **Combos.** Hold any control and press or turn another to do something else, for
   example *hold the knob and turn it* for brightness, *hold key 1 and press key 2* for
-  a shortcut. Holding a key on its own (long press) can do something else too.
+  a shortcut. Holding a key on its own (long press) can do something else too. A key's
+  own action can wait until you let go (so it doesn't fire when you use a combo) or be
+  held right away, so combos add to it: *knob = Alt, turn = Tab* is Alt+Tab window
+  switching.
 - **Three profiles**, each with its own light color and effect; switch with a combo,
   a key or the app.
 - **Gamepad axis.** The knob can be an absolute gamepad axis (stick or triggers) with a
@@ -90,11 +93,15 @@ choose what it does.
 |---|---|---|---|---|---|
 | 1, cyan | previous track | play / pause | next track | mute | volume |
 | 2, amber | Ctrl+C | Ctrl+V | Ctrl+Z | Enter | scroll |
-| 3, violet | left click | middle click | right click | back | scroll sideways |
+| 3, teal | Win+Tab (task view) | Win+D (desktop) | Win+Shift+S (screenshot) | Alt | Ctrl+Tab / Ctrl+Shift+Tab (browser tabs) |
 
 In every profile: **hold the knob and press key 1, 2 or 3** to switch profiles,
 **hold the knob and turn it** to change the brightness. Because the knob starts combos,
 its own action (mute) is sent when you let go of it.
+
+Profile 3 switches windows: **hold the knob and turn it** like Alt+Tab, let go to pick
+the window. The knob holds Alt right away there, and its own turn combos (Tab /
+Shift+Tab) replace the brightness combos in that profile.
 
 | Plug in while holding | What happens |
 |---|---|
