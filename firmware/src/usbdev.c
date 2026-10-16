@@ -1,21 +1,23 @@
 // ===================================================================================
-// USB device layer (both modes) for CH552
+// USB device layer for CH552
 // ===================================================================================
 // Control endpoint handling is derived from wagiminator's CH55x USB handler
-// (CC BY-SA 3.0, https://github.com/wagiminator), extended with runtime descriptor
-// selection, HID class requests and feature-report data stages.
+// (CC BY-SA 3.0, https://github.com/wagiminator), extended with three device
+// personalities, HID class requests, feature-report data stages and Microsoft OS
+// descriptors.
 
 #pragma nooverlay
 #include "usb.h"
 #include "usbdev.h"
-#include "settings.h"
+#include "config.h"
 
-uint8_t USB_mode;
+uint8_t USB_personality;
 volatile __bit USB_featureNew;
 __xdata uint8_t USB_featureOut[FEATURE_REPORT_LEN];
 __xdata uint8_t USB_featureIn[FEATURE_REPORT_LEN];
 
 static volatile __bit ep1Busy;
+static volatile __bit ep2Busy;
 static volatile __bit ep3Busy;
 static uint16_t SetupLen;
 static uint8_t  SetupReq, SetupType, SetupIntf, UsbConfig;
@@ -23,7 +25,7 @@ __code uint8_t* pDescr;                     // used by the asm copy routine (_pD
 
 #define setupBuf ((PUSB_SETUP_REQ)EP0_buffer)
 
-// Copy len bytes from *pDescr (code memory) to EP0_buffer using both DPTRs
+// Copy len (1..255) bytes from *pDescr (code memory) to EP0_buffer using both DPTRs
 // (Thanks to Ralph Doncaster / wagiminator)
 #pragma callee_saves USB_copyDescr
 static void USB_copyDescr(uint8_t len) {
@@ -46,49 +48,8 @@ static void USB_copyDescr(uint8_t len) {
   __endasm;
 }
 
-// Returns number of bytes placed in EP0_buffer, or 0xFF to stall
-static uint8_t USB_getDescriptor(void) {
-  uint8_t idx = setupBuf->wValueL;
-  uint8_t len;
-  uint8_t pad = (USB_mode == MODE_GAMEPAD);
-
-  switch(setupBuf->wValueH) {
-    case USB_DESCR_TYP_DEVICE:
-      pDescr = pad ? PAD_DevDescr : KBD_DevDescr;
-      len = 18;
-      break;
-    case USB_DESCR_TYP_CONFIG:
-      pDescr = pad ? PAD_CfgDescr : KBD_CfgDescr;
-      len = pad ? PAD_CFG_LEN : KBD_CFG_LEN;
-      break;
-    case USB_DESCR_TYP_STRING:
-      if(pad) {
-        if(idx >= PAD_STR_COUNT) return 0xFF;
-        pDescr = PAD_Strings[idx];
-      }
-      else {
-        if(idx >= KBD_STR_COUNT) return 0xFF;
-        pDescr = KBD_Strings[idx];
-      }
-      len = pDescr[0];
-      break;
-    case USB_DESCR_TYP_REPORT:
-      if(pad) return 0xFF;
-      if(setupBuf->wIndexL == 0) { pDescr = KBD_Report0; len = KBD_Report0Len; }
-      else if(setupBuf->wIndexL == 1) { pDescr = KBD_Report1; len = KBD_Report1Len; }
-      else return 0xFF;
-      break;
-    case USB_DESCR_TYP_HID:
-      if(pad) return 0xFF;
-      if(setupBuf->wIndexL == 0) pDescr = KBD_CfgDescr + KBD_HID0_OFFSET;
-      else if(setupBuf->wIndexL == 1) pDescr = KBD_CfgDescr + KBD_HID1_OFFSET;
-      else return 0xFF;
-      len = 9;
-      break;
-    default:
-      return 0xFF;
-  }
-
+// Start sending pDescr[0..len) on EP0; returns bytes in the first packet
+static uint8_t USB_sendDescr(uint8_t len) {
   if(SetupLen > len) SetupLen = len;
   len = SetupLen >= EP0_SIZE ? EP0_SIZE : SetupLen;
   if(len) USB_copyDescr(len);                 // djnz would copy 256 bytes for len 0
@@ -97,10 +58,46 @@ static uint8_t USB_getDescriptor(void) {
   return len;
 }
 
-// HID class requests (keyboard mode only)
+static uint8_t USB_getDescriptor(void) {
+  uint8_t idx = setupBuf->wValueL;
+  uint8_t legacy = (USB_personality == USB_LEGACY);
+
+  switch(setupBuf->wValueH) {
+    case USB_DESCR_TYP_DEVICE:
+      pDescr = legacy ? DevDescrLegacy : (USB_personality == USB_WHEEL ? DevDescrWheel : DevDescrKeyboard);
+      return USB_sendDescr(18);
+    case USB_DESCR_TYP_CONFIG:
+      if(legacy) { pDescr = CfgDescrLegacy; return USB_sendDescr(LEGACY_CFG_LEN); }
+      if(USB_personality == USB_WHEEL) { pDescr = CfgDescrWheel; return USB_sendDescr(WHEEL_CFG_LEN); }
+      pDescr = CfgDescrKeyboard;
+      return USB_sendDescr(KBD_CFG_LEN);
+    case USB_DESCR_TYP_STRING:
+      if(idx == MS_OS_STRING_INDEX) {
+        if(USB_personality != USB_WHEEL) return 0xFF;
+        pDescr = MsOsString;
+        return USB_sendDescr(18);
+      }
+      if(idx >= STR_COUNT) return 0xFF;
+      pDescr = legacy ? LegacyStrings[idx] : Strings[idx];
+      return USB_sendDescr(pDescr[0]);
+    case USB_DESCR_TYP_REPORT:
+      if(legacy) return 0xFF;
+      if(setupBuf->wIndexL == 0) { pDescr = Report0; return USB_sendDescr(Report0Len); }
+      if(setupBuf->wIndexL == 1) { pDescr = Report1; return USB_sendDescr(Report1Len); }
+      return 0xFF;
+    case USB_DESCR_TYP_HID:
+      if(legacy || setupBuf->wIndexL > 1) return 0xFF;
+      pDescr = CfgDescrKeyboard + (setupBuf->wIndexL ? CFG_HID1_OFFSET : CFG_HID0_OFFSET);
+      return USB_sendDescr(9);
+    default:
+      return 0xFF;
+  }
+}
+
+// HID class requests for interfaces 0 and 1
 static uint8_t USB_classRequest(void) {
   uint8_t i, len;
-  if(USB_mode == MODE_GAMEPAD) return 0xFF;
+  if(USB_personality == USB_LEGACY || SetupIntf > 1) return 0xFF;
   switch(SetupReq) {
     case HID_GET_REPORT:
       len = SetupLen > EP0_SIZE ? EP0_SIZE : SetupLen;
@@ -127,19 +124,35 @@ static uint8_t USB_classRequest(void) {
   }
 }
 
+// Vendor requests: only the Microsoft OS extended compatible ID (wheel mode).
+// Everything else - including Xbox security requests - is stalled.
+static uint8_t USB_vendorRequest(void) {
+  if(USB_personality == USB_WHEEL && SetupReq == MS_OS_VENDOR_CODE &&
+     (SetupType & 0x80) && setupBuf->wIndexL == 0x04 && setupBuf->wIndexH == 0) {
+    pDescr = MsCompatId;
+    return USB_sendDescr(sizeof(MsCompatId));
+  }
+  return 0xFF;
+}
+
 static void USB_endpointHalt(uint8_t ep, uint8_t set) {
   switch(ep) {
     case 0x81: UEP1_CTRL = set ? (UEP1_CTRL & ~bUEP_T_TOG) | UEP_T_RES_STALL
-                               : (UEP1_CTRL & ~(bUEP_T_TOG | MASK_UEP_T_RES)) | UEP_T_RES_NAK; break;
+                               : (UEP1_CTRL & ~(bUEP_T_TOG | MASK_UEP_T_RES)) | UEP_T_RES_NAK;
+               if(!set) ep1Busy = 0;
+               break;
+    case 0x82: UEP2_CTRL = set ? (UEP2_CTRL & ~bUEP_T_TOG) | UEP_T_RES_STALL
+                               : (UEP2_CTRL & ~(bUEP_T_TOG | MASK_UEP_T_RES)) | UEP_T_RES_NAK;
+               if(!set) ep2Busy = 0;
+               break;
     case 0x02: UEP2_CTRL = set ? (UEP2_CTRL & ~bUEP_R_TOG) | UEP_R_RES_STALL
-                               : (UEP2_CTRL & ~(bUEP_R_TOG | MASK_UEP_R_RES)) | UEP_R_RES_ACK; break;
+                               : (UEP2_CTRL & ~(bUEP_R_TOG | MASK_UEP_R_RES)) | UEP_R_RES_ACK;
+               break;
     case 0x83: UEP3_CTRL = set ? (UEP3_CTRL & ~bUEP_T_TOG) | UEP_T_RES_STALL
-                               : (UEP3_CTRL & ~(bUEP_T_TOG | MASK_UEP_T_RES)) | UEP_T_RES_NAK; break;
+                               : (UEP3_CTRL & ~(bUEP_T_TOG | MASK_UEP_T_RES)) | UEP_T_RES_NAK;
+               if(!set) ep3Busy = 0;
+               break;
     default: break;
-  }
-  if(!set) {
-    if(ep == 0x81) ep1Busy = 0;
-    if(ep == 0x83) ep3Busy = 0;
   }
 }
 
@@ -192,7 +205,10 @@ static void USB_EP0_SETUP(void) {
       case USB_REQ_TYP_CLASS:
         len = USB_classRequest();
         break;
-      default:                                             // vendor requests (Xbox auth): stall
+      case USB_REQ_TYP_VENDOR:
+        len = USB_vendorRequest();
+        break;
+      default:
         len = 0xFF;
         break;
     }
@@ -210,21 +226,22 @@ static void USB_EP0_SETUP(void) {
 
 static void USB_EP0_IN(void) {
   uint8_t len;
-  if((SetupType & USB_REQ_TYP_MASK) == USB_REQ_TYP_STANDARD) {
-    if(SetupReq == USB_GET_DESCRIPTOR) {
-      len = SetupLen >= EP0_SIZE ? EP0_SIZE : SetupLen;
-      if(len) USB_copyDescr(len);
-      SetupLen -= len;
-      pDescr   += len;
-      UEP0_T_LEN = len;
-      UEP0_CTRL ^= bUEP_T_TOG;
-      return;
-    }
-    if(SetupReq == USB_SET_ADDRESS) {
-      USB_DEV_AD = USB_DEV_AD & bUDA_GP_BIT | SetupLen;
-      UEP0_CTRL  = UEP_R_RES_ACK | UEP_T_RES_NAK;
-      return;
-    }
+  uint8_t typ = SetupType & USB_REQ_TYP_MASK;
+  // continue multi-packet descriptors (standard GET_DESCRIPTOR or MS OS vendor request)
+  if((typ == USB_REQ_TYP_STANDARD && SetupReq == USB_GET_DESCRIPTOR) ||
+     (typ == USB_REQ_TYP_VENDOR && SetupReq == MS_OS_VENDOR_CODE)) {
+    len = SetupLen >= EP0_SIZE ? EP0_SIZE : SetupLen;
+    if(len) USB_copyDescr(len);
+    SetupLen -= len;
+    pDescr   += len;
+    UEP0_T_LEN = len;
+    UEP0_CTRL ^= bUEP_T_TOG;
+    return;
+  }
+  if(typ == USB_REQ_TYP_STANDARD && SetupReq == USB_SET_ADDRESS) {
+    USB_DEV_AD = USB_DEV_AD & bUDA_GP_BIT | SetupLen;
+    UEP0_CTRL  = UEP_R_RES_ACK | UEP_T_RES_NAK;
+    return;
   }
   UEP0_T_LEN = 0;
   UEP0_CTRL  = UEP_R_RES_ACK | UEP_T_RES_NAK;
@@ -252,11 +269,13 @@ static void USB_EP0_OUT(void) {
 static void USB_resetEndpoints(void) {
   UEP0_CTRL = UEP_R_RES_ACK | UEP_T_RES_NAK;
   UEP1_CTRL = bUEP_AUTO_TOG | UEP_T_RES_NAK;
-  UEP2_CTRL = bUEP_AUTO_TOG | UEP_R_RES_ACK;
+  UEP2_CTRL = bUEP_AUTO_TOG | UEP_T_RES_NAK | UEP_R_RES_ACK;
   UEP3_CTRL = bUEP_AUTO_TOG | UEP_T_RES_NAK;
   UEP1_T_LEN = 0;
+  UEP2_T_LEN = 0;
   UEP3_T_LEN = 0;
   ep1Busy = 0;
+  ep2Busy = 0;
   ep3Busy = 0;
   UsbConfig = 0;
 }
@@ -275,6 +294,11 @@ void USB_ISR(void) __interrupt(INT_NO_USB) {
           UEP1_CTRL = UEP1_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_NAK;
           ep1Busy = 0;
         }
+        else if(ep == 2) {
+          UEP2_T_LEN = 0;
+          UEP2_CTRL = UEP2_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_NAK;
+          ep2Busy = 0;
+        }
         else if(ep == 3) {
           UEP3_T_LEN = 0;
           UEP3_CTRL = UEP3_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_NAK;
@@ -283,7 +307,7 @@ void USB_ISR(void) __interrupt(INT_NO_USB) {
         break;
       case UIS_TOKEN_OUT:
         if(ep == 0) USB_EP0_OUT();
-        // EP2 OUT (XInput rumble/LED): auto-ACKed, content ignored
+        // EP2 OUT (XInput rumble/LED commands): auto-ACKed, content ignored
         break;
       default:
         break;
@@ -305,8 +329,8 @@ void USB_ISR(void) __interrupt(INT_NO_USB) {
   }
 }
 
-void USB_init(uint8_t mode) {
-  USB_mode = mode;
+void USB_init(uint8_t personality) {
+  USB_personality = personality;
   USB_featureNew = 0;
 
   USB_CTRL  = bUC_DEV_PU_EN | bUC_INT_BUSY | bUC_DMA_EN;
@@ -317,7 +341,9 @@ void USB_init(uint8_t mode) {
   UEP2_DMA = EP2_ADDR;
   UEP3_DMA = EP3_ADDR;
   UEP4_1_MOD = bUEP1_TX_EN;
-  UEP2_3_MOD = (mode == MODE_GAMEPAD) ? bUEP2_RX_EN : bUEP3_TX_EN;
+  if(personality == USB_LEGACY)     UEP2_3_MOD = bUEP2_RX_EN;
+  else if(personality == USB_WHEEL) UEP2_3_MOD = bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN;
+  else                              UEP2_3_MOD = bUEP3_TX_EN;
   USB_resetEndpoints();
 
   USB_INT_EN |= bUIE_SUSPEND | bUIE_TRANSFER | bUIE_BUS_RST;
@@ -334,30 +360,50 @@ void USB_disconnect(void) {
   UDEV_CTRL = bUD_PD_DIS;
 }
 
-uint8_t USB_configured(void) {
-  return UsbConfig != 0;
+static void USB_load(__xdata uint8_t* dst, __xdata uint8_t* src, uint8_t len) {
+  while(len--) *dst++ = *src++;
 }
 
-uint8_t USB_ep1Ready(void) {
-  return UsbConfig && !ep1Busy;
+uint8_t USB_hidReady(void) {
+  return UsbConfig && !ep1Busy && USB_personality != USB_LEGACY;
 }
 
-void USB_ep1Send(__xdata uint8_t* buf, uint8_t len) {
-  uint8_t i;
-  for(i = 0; i < len; i++) EP1_buffer[i] = buf[i];
+void USB_hidSend(__xdata uint8_t* buf, uint8_t len) {
+  USB_load(EP1_buffer, buf, len);
   UEP1_T_LEN = len;
   ep1Busy = 1;
   UEP1_CTRL = UEP1_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
 }
 
-uint8_t USB_ep3Ready(void) {
-  return UsbConfig && !ep3Busy && USB_mode == MODE_KEYBOARD;
+uint8_t USB_statusReady(void) {
+  return UsbConfig && !ep3Busy && USB_personality != USB_LEGACY;
 }
 
-void USB_ep3Send(__xdata uint8_t* buf, uint8_t len) {
-  uint8_t i;
-  for(i = 0; i < len; i++) EP3_buffer[i] = buf[i];
+void USB_statusSend(__xdata uint8_t* buf, uint8_t len) {
+  USB_load(EP3_buffer, buf, len);
   UEP3_T_LEN = len;
   ep3Busy = 1;
   UEP3_CTRL = UEP3_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
+}
+
+// XInput reports: EP2 IN (TX buffer at EP2_ADDR + 64) in wheel mode, EP1 in legacy
+uint8_t USB_padReady(void) {
+  if(!UsbConfig) return 0;
+  if(USB_personality == USB_WHEEL) return !ep2Busy;
+  if(USB_personality == USB_LEGACY) return !ep1Busy;
+  return 0;
+}
+
+void USB_padSend(__xdata uint8_t* buf, uint8_t len) {
+  if(USB_personality == USB_LEGACY) {
+    USB_load(EP1_buffer, buf, len);
+    UEP1_T_LEN = len;
+    ep1Busy = 1;
+    UEP1_CTRL = UEP1_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
+    return;
+  }
+  USB_load(EP2_buffer + 64, buf, len);
+  UEP2_T_LEN = len;
+  ep2Busy = 1;
+  UEP2_CTRL = UEP2_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
 }

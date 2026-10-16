@@ -10,7 +10,6 @@
 // Timer2 in 16-bit auto-reload mode, clocked at Fsys/12
 #define TICK_HZ       4000
 #define T2_RELOAD     (65536 - (FREQ_SYS / 12 / TICK_HZ))
-#define DEBOUNCE_MS   5
 
 // Quarter-step transition table indexed by (previous_state << 2) | new_state,
 // state = (A << 1) | B. +1 = clockwise (A leads), 0 = no move or invalid jump.
@@ -27,7 +26,8 @@ static volatile uint8_t  buttons;
 static uint8_t  enc_prev;
 static int8_t   enc_acc;                  // quarter steps since last detent
 static uint8_t  sub;
-static uint8_t  db_cnt[4];
+static __xdata uint8_t db_cnt[BOARD_BUTTONS];
+static uint8_t  debounce = 5;
 static __bit    halfstep;
 static __bit    invert;
 
@@ -59,14 +59,7 @@ uint8_t INP_buttons(void) {
   return buttons;
 }
 
-static uint8_t rawButtons(void) {
-  uint8_t b = 0;
-  if(!PIN_read(PIN_KEY1))   b |= BTN_KEY1;
-  if(!PIN_read(PIN_KEY2))   b |= BTN_KEY2;
-  if(!PIN_read(PIN_KEY3))   b |= BTN_KEY3;
-  if(!PIN_read(PIN_ENC_SW)) b |= BTN_KNOB;
-  return b;
-}
+void INP_setDebounce(uint8_t v) { debounce = v ? v : 1; }
 
 void INP_ISR(void) __interrupt(INT_NO_TMR2) {
   uint8_t s, i, raw, bit;
@@ -91,10 +84,10 @@ void INP_ISR(void) __interrupt(INT_NO_TMR2) {
   if(++sub < TICK_HZ / 1000) return;
   sub = 0;
   ms++;
-  raw = rawButtons();
-  for(i = 0, bit = 1; i < 4; i++, bit <<= 1) {
+  raw = BTN_READ();
+  for(i = 0, bit = 1; i < BOARD_BUTTONS; i++, bit <<= 1) {
     if((raw ^ buttons) & bit) {
-      if(++db_cnt[i] >= DEBOUNCE_MS) { buttons ^= bit; db_cnt[i] = 0; }
+      if(++db_cnt[i] >= debounce) { buttons ^= bit; db_cnt[i] = 0; }
     }
     else db_cnt[i] = 0;
   }

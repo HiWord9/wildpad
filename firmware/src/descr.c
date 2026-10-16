@@ -1,9 +1,9 @@
 // ===================================================================================
-// USB descriptors for both device modes
+// USB descriptors
 // ===================================================================================
-// The Xbox 360 configuration descriptor is taken byte-for-byte from GP2040-CE
-// (MIT, https://github.com/OpenStickCommunity/GP2040-CE) which mirrors a genuine
-// wired controller. ArduinoXInput uses the same layout.
+// The Xbox 360 interface layout is taken from GP2040-CE (MIT,
+// https://github.com/OpenStickCommunity/GP2040-CE), which mirrors a genuine wired
+// controller. The Microsoft OS descriptor format follows [MS-XUSBI] 2.2.2.
 
 #include "config.h"
 #include "descr.h"
@@ -11,22 +11,18 @@
 #define LO(x) ((x) & 0xFF)
 #define HI(x) (((x) >> 8) & 0xFF)
 
-// ===================================================================================
-// Keyboard mode
-// ===================================================================================
-__code uint8_t KBD_DevDescr[18] = {
-  0x12, 0x01,                   // bLength, DEVICE
-  0x10, 0x01,                   // USB 1.1
-  0x00, 0x00, 0x00,             // class defined per interface
-  0x40,                         // EP0 size 64
-  LO(KBD_VENDOR_ID),  HI(KBD_VENDOR_ID),
-  LO(KBD_PRODUCT_ID), HI(KBD_PRODUCT_ID),
-  LO(KBD_DEVICE_VERSION), HI(KBD_DEVICE_VERSION),
-  1, 2, 3,                      // manufacturer, product, serial strings
-  1                             // configurations
-};
+#define DEV_DESCR(vid, pid, bcd, usb, cls) {                              \
+  0x12, 0x01, LO(usb), HI(usb), cls, cls, cls, 0x40,                      \
+  LO(vid), HI(vid), LO(pid), HI(pid), LO(bcd), HI(bcd), 1, 2, 3, 1 }
 
-__code uint8_t KBD_Report0[] = {
+__code uint8_t DevDescrKeyboard[18] = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_KEYBOARD, 0x0200, 0x00);
+__code uint8_t DevDescrWheel[18]    = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_WHEEL,    0x0200, 0x00);
+__code uint8_t DevDescrLegacy[18]   = DEV_DESCR(LEGACY_VENDOR_ID, LEGACY_PRODUCT_ID, LEGACY_BCD, 0x0200, 0xFF);
+
+// ===================================================================================
+// HID report descriptors
+// ===================================================================================
+__code uint8_t Report0[] = {
   // Keyboard (report 1): modifiers, reserved, 6 key slots; LED output
   0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, REPORT_ID_KEYBOARD,
   0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01,
@@ -55,9 +51,9 @@ __code uint8_t KBD_Report0[] = {
   0xC0,
   0xC0
 };
-__code uint8_t KBD_Report0Len = sizeof(KBD_Report0);
+__code uint8_t Report0Len = sizeof(Report0);
 
-__code uint8_t KBD_Report1[] = {
+__code uint8_t Report1[] = {
   0x06, 0x54, 0xFF,             // usage page 0xFF54 (vendor)
   0x09, 0x01, 0xA1, 0x01,       // usage 1, application collection
   0x15, 0x00, 0x26, 0xFF, 0x00, 0x75, 0x08,
@@ -65,51 +61,40 @@ __code uint8_t KBD_Report1[] = {
   0x09, 0x03, 0x95, FEATURE_REPORT_LEN, 0xB1, 0x02,   // feature: config protocol
   0xC0
 };
-__code uint8_t KBD_Report1Len = sizeof(KBD_Report1);
-
-__code uint8_t KBD_CfgDescr[KBD_CFG_LEN] = {
-  0x09, 0x02, KBD_CFG_LEN, 0x00, 0x02, 0x01, 0x00, 0x80, USB_MAX_POWER_mA / 2,
-  // Interface 0: keyboard / consumer / mouse
-  0x09, 0x04, 0x00, 0x00, 0x01, 0x03, 0x00, 0x00, 0x00,
-  0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(KBD_Report0), 0x00,
-  0x07, 0x05, 0x81, 0x03, 0x10, 0x00, 0x01,           // EP1 IN, 16 bytes, 1 ms
-  // Interface 1: configuration / live position
-  0x09, 0x04, 0x01, 0x00, 0x01, 0x03, 0x00, 0x00, 0x04,
-  0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(KBD_Report1), 0x00,
-  0x07, 0x05, 0x83, 0x03, STATUS_REPORT_LEN, 0x00, 0x02  // EP3 IN, 2 ms
-};
-
-static __code uint16_t KBD_Lang[]  = { (3 << 8) | 4, 0x0409 };
-static __code uint16_t KBD_Manuf[] = { (3 << 8) | (2 + 2 * 7),
-  'T','I','S','H','R','I','C' };
-static __code uint16_t KBD_Prod[]  = { (3 << 8) | (2 + 2 * 21),
-  'T','I','S','H','R','I','C',' ','K','n','o','b',' ','(','o','p','e','n',' ','f','w' };
-static __code uint16_t KBD_Ser[]   = { (3 << 8) | (2 + 2 * 6),
-  'K','N','O','B','0','1' };
-static __code uint16_t KBD_Itf[]   = { (3 << 8) | (2 + 2 * 11),
-  'K','n','o','b',' ','c','o','n','f','i','g' };
-
-__code uint8_t* __code KBD_Strings[KBD_STR_COUNT] = {
-  (__code uint8_t*)KBD_Lang, (__code uint8_t*)KBD_Manuf, (__code uint8_t*)KBD_Prod,
-  (__code uint8_t*)KBD_Ser,  (__code uint8_t*)KBD_Itf
-};
+__code uint8_t Report1Len = sizeof(Report1);
 
 // ===================================================================================
-// Gamepad mode (Xbox 360 wired controller)
+// Configuration descriptors
 // ===================================================================================
-__code uint8_t PAD_DevDescr[18] = {
-  0x12, 0x01,
-  0x00, 0x02,                   // USB 2.0
-  0xFF, 0xFF, 0xFF,             // vendor specific
-  0x40,
-  LO(PAD_VENDOR_ID),  HI(PAD_VENDOR_ID),
-  LO(PAD_PRODUCT_ID), HI(PAD_PRODUCT_ID),
-  LO(PAD_DEVICE_VERSION), HI(PAD_DEVICE_VERSION),
-  1, 2, 3,
-  1
+#define CFG_HEADER(len, n) 0x09, 0x02, (len), 0x00, (n), 0x01, 0x00, 0x80, USB_MAX_POWER_mA / 2
+
+#define HID_INTERFACES                                                                 \
+  /* Interface 0: keyboard / consumer / mouse */                                       \
+  0x09, 0x04, 0x00, 0x00, 0x01, 0x03, 0x00, 0x00, 0x00,                                \
+  0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(Report0), 0x00,                     \
+  0x07, 0x05, 0x81, 0x03, 0x10, 0x00, 0x01,                                            \
+  /* Interface 1: configuration + live state */                                        \
+  0x09, 0x04, 0x01, 0x00, 0x01, 0x03, 0x00, 0x00, 0x04,                                \
+  0x09, 0x21, 0x11, 0x01, 0x00, 0x01, 0x22, sizeof(Report1), 0x00,                     \
+  0x07, 0x05, 0x83, 0x03, STATUS_REPORT_LEN, 0x00, 0x02
+
+__code uint8_t CfgDescrKeyboard[KBD_CFG_LEN] = {
+  CFG_HEADER(KBD_CFG_LEN, 2),
+  HID_INTERFACES
 };
 
-__code uint8_t PAD_CfgDescr[PAD_CFG_LEN] = {
+__code uint8_t CfgDescrWheel[WHEEL_CFG_LEN] = {
+  CFG_HEADER(WHEEL_CFG_LEN, 3),
+  HID_INTERFACES,
+  // Interface 2: XInput (bound to xusb22 through the XUSB10 compatible ID)
+  0x09, 0x04, 0x02, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
+  0x11, 0x21, 0x00, 0x01, 0x01, 0x25, 0x82, 0x14, 0x00, 0x00, 0x00, 0x00, 0x13,
+  0x02, 0x08, 0x00, 0x00,
+  0x07, 0x05, 0x82, 0x03, 0x20, 0x00, 0x01,           // EP2 IN, 1 ms
+  0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08            // EP2 OUT (rumble / LED)
+};
+
+__code uint8_t CfgDescrLegacy[LEGACY_CFG_LEN] = {
   0x09, 0x02, 0x99, 0x00, 0x04, 0x01, 0x00, 0xA0, 0xFA,
   // Interface 0: control data (XInput)
   0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
@@ -134,17 +119,49 @@ __code uint8_t PAD_CfgDescr[PAD_CFG_LEN] = {
   0x06, 0x41, 0x00, 0x01, 0x01, 0x03
 };
 
-static __code uint16_t PAD_Manuf[] = { (3 << 8) | (2 + 2 * 7),
-  'T','I','S','H','R','I','C' };
-static __code uint16_t PAD_Prod[]  = { (3 << 8) | (2 + 2 * 10),
+// ===================================================================================
+// Microsoft OS 1.0 descriptors (wheel mode only)
+// ===================================================================================
+__code uint8_t MsOsString[18] = {
+  0x12, 0x03, 'M', 0, 'S', 0, 'F', 0, 'T', 0, '1', 0, '0', 0, '0', 0, MS_OS_VENDOR_CODE, 0x00
+};
+
+__code uint8_t MsCompatId[40] = {
+  0x28, 0x00, 0x00, 0x00,       // dwLength
+  0x00, 0x01,                   // bcdVersion 1.00
+  0x04, 0x00,                   // wIndex: extended compatible ID
+  0x01,                         // one function section
+  0, 0, 0, 0, 0, 0, 0,
+  0x02,                         // first interface: XInput
+  0x01,                         // interface count
+  'X', 'U', 'S', 'B', '1', '0', 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0
+};
+
+// ===================================================================================
+// String descriptors
+// ===================================================================================
+static __code uint16_t StrLang[]  = { (3 << 8) | 4, 0x0409 };
+static __code uint16_t StrManuf[] = { (3 << 8) | (2 + 2 * 6), 'D','e','t','e','n','t' };
+static __code uint16_t StrProd[]  = { (3 << 8) | (2 + 2 * 15),
+  'D','e','t','e','n','t',' ','M','a','c','r','o','p','a','d' };
+static __code uint16_t StrSer[]   = { (3 << 8) | (2 + 2 * 8), 'D','E','T','E','N','T','0','1' };
+static __code uint16_t StrItf[]   = { (3 << 8) | (2 + 2 * 13),
+  'D','e','t','e','n','t',' ','c','o','n','f','i','g' };
+static __code uint16_t StrPadProd[] = { (3 << 8) | (2 + 2 * 10),
   'C','o','n','t','r','o','l','l','e','r' };
-static __code uint16_t PAD_Ser[]   = { (3 << 8) | (2 + 2 * 7),
-  '0','8','F','E','C','9','3' };
-static __code uint16_t PAD_Sec[]   = { (3 << 8) | (2 + 2 * 36),
+static __code uint16_t StrPadSer[]  = { (3 << 8) | (2 + 2 * 7), '0','8','F','E','C','9','3' };
+static __code uint16_t StrPadSec[]  = { (3 << 8) | (2 + 2 * 36),
   'X','b','o','x',' ','S','e','c','u','r','i','t','y',' ','M','e','t','h','o','d',
   ' ','3',',',' ','V','e','r','s','i','o','n',' ','1','.','0','0' };
 
-__code uint8_t* __code PAD_Strings[PAD_STR_COUNT] = {
-  (__code uint8_t*)KBD_Lang, (__code uint8_t*)PAD_Manuf, (__code uint8_t*)PAD_Prod,
-  (__code uint8_t*)PAD_Ser,  (__code uint8_t*)PAD_Sec
+__code uint8_t* __code Strings[STR_COUNT] = {
+  (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrProd,
+  (__code uint8_t*)StrSer,  (__code uint8_t*)StrItf
+};
+
+__code uint8_t* __code LegacyStrings[STR_COUNT] = {
+  (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrPadProd,
+  (__code uint8_t*)StrPadSer, (__code uint8_t*)StrPadSec
 };

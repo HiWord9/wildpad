@@ -11,11 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
-TARGET = "tishric_knob"
+TARGET = "detent"
 
 FREQ_SYS = 16000000
-XRAM_SIZE = 0x0300
-XRAM_LOC = 0x0100
+XRAM_SIZE = 0x02C0
+XRAM_LOC = 0x0140          # endpoint buffers use 0x0000-0x013F
 CODE_SIZE = 0x3800          # 14 KiB; the bootloader lives above 0x3800
 
 SOURCES = [
