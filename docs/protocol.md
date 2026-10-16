@@ -35,11 +35,12 @@ matching `cmd` and `seq` (poll every few milliseconds; `seq` should cycle throug
 | 4 | COMMIT | – | byte 0: 1 if the USB layout must change (validates staging and makes it live; status 2 if invalid) |
 | 5 | SAVE | – | byte 0: as COMMIT (stores the live settings in Data-Flash) |
 | 6 | DEFAULTS | – | byte 0: as COMMIT (live settings = factory settings, not saved) |
-| 7 | STATUS | – | like the live input report |
+| 7 | STATUS | – | bytes 0–4 like the live input report; bytes 8–16 the keyboard report being sent (report id, modifiers, reserved, 6 keys) |
 | 8 | RECENTER | – | – (knob axis center = current position) |
 | 9 | REBOOT | – | – (device reconnects) |
 | 10 | BOOTLOADER | – | – (device reappears as the CH552 bootloader `4348:55E0`) |
 | 11 | PROFILE | offset = profile (0-based) | – (switch the active profile) |
+| 12 | INJECT | offset = buttons held (bit *i* = button *i*), length = knob clicks (int8) | – (acts as if the buttons were held and the knob turned; for automated tests) |
 
 To change settings: READ everything, modify, WRITE all chunks, COMMIT, then SAVE. If
 SAVE reports that the USB layout must change (an action now needs the gamepad, or no

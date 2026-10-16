@@ -41,6 +41,8 @@ static int16_t  pos;                      // knob position (clicks)
 static int16_t  center;                   // knob position treated as axis zero
 static int16_t  knobSeen;                 // knob position already turned into steps
 static int16_t  rel;                      // pos - center, limited to the axis range
+static uint8_t  fakeBtn;                  // buttons held by CMD_INJECT
+static int16_t  fakePos;                  // knob clicks added by CMD_INJECT
 static __bit    hasPad;                   // gamepad interface present
 static __bit    ledOn = 1;                // lights toggled on
 static __bit    rebootPending;
@@ -662,6 +664,7 @@ static void STATUS_task(void) {
 #define CMD_REBOOT      9
 #define CMD_BOOTLOADER  10
 #define CMD_PROFILE     11
+#define CMD_INJECT      12                // test aid: offset = buttons held, length = int8 knob clicks
 
 #define ST_OK           0
 #define ST_BAD_CMD      1
@@ -735,6 +738,7 @@ static void CFG_task(void) {
       break;
     case CMD_STATUS:
       fillStatus(out);
+      for(i = 0; i < 9; i++) out[8 + i] = kbdRep[i];          // keyboard report being sent
       break;
     case CMD_RECENTER:
       center = pos;
@@ -748,6 +752,10 @@ static void CFG_task(void) {
     case CMD_PROFILE:
       if(off >= N_PROFILES) { status = ST_BAD_RANGE; break; }
       setProfile(off);
+      break;
+    case CMD_INJECT:                                        // as if pressed / turned by hand
+      fakeBtn = off;
+      fakePos += (int8_t)len;
       break;
     default:
       status = ST_BAD_CMD;
@@ -797,6 +805,17 @@ static void enterBootloader(void) {
 // ===================================================================================
 // Main
 // ===================================================================================
+// SDCC links its start-up code that zeroes the variables in external RAM only when a
+// module asks for it. Without it every static in XRAM (button states, held actions,
+// ...) starts with whatever the bootloader left there, and C code - like the
+// simulator, where RAM starts zeroed - assumes zeros. Never called; it only carries
+// the request to the linker.
+void requestXramClear(void) __naked {
+  __asm
+    .globl __mcs51_genXRAMCLEAR
+  __endasm;
+}
+
 void main(void) {
   uint8_t i;
 
@@ -828,8 +847,8 @@ void main(void) {
   while(1) {
     WDT_reset();
     now = INP_millis();
-    btn = INP_buttons();
-    pos = INP_position();
+    btn = INP_buttons() | fakeBtn;
+    pos = INP_position() + fakePos;
 
     BTN_task();
     KNOB_task();

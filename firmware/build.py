@@ -120,6 +120,10 @@ def main():
     print(f"FLASH: {size} / {CODE_SIZE} bytes ({100 * size // CODE_SIZE}%)")
     if stack:
         print(f"STACK: {stack.group(2)} bytes free")
+    # Statics in XRAM must start at zero; SDCC only links that start-up code on request
+    # (see requestXramClear() in main.c). Real RAM holds junk after reset.
+    if "crtxclear.rel" not in (BUILD / f"{TARGET}.map").read_text():
+        sys.exit("FAILED: start-up code that clears XRAM is not linked")
     print(f"OK -> {BUILD / (TARGET + '.bin')}")
 
 

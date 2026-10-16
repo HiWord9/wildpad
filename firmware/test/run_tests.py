@@ -45,7 +45,10 @@ def simulate(tag, sources, dump_from, dump_len, defines=None):
     done = int(re.search(r"\b([0-9A-Fa-f]{8})\s+_done\b", (OUT / f"{tag}.map").read_text()).group(1), 16)
 
     end = dump_from + dump_len - 1
-    cmds = f"break 0x{done:04x}\nrun\ndump xram 0x{dump_from:x} 0x{end:x}\nquit\n"
+    # Real RAM is not zero after reset; fill it with junk so code that relies on
+    # uninitialised variables fails here too (the start-up code must clear them).
+    junk = "fill xram 0 0xfff 0xa5\nfill iram 8 0xff 0x5a\n"
+    cmds = junk + f"break 0x{done:04x}\nrun\ndump xram 0x{dump_from:x} 0x{end:x}\nquit\n"
     r = subprocess.run([str(bindir / "s51"), "-t", "8052", "-X", "12M", str(ihx)], input=cmds,
                        capture_output=True, text=True, timeout=900)
     text = r.stdout + r.stderr

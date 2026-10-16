@@ -278,7 +278,13 @@ def main():
     t = None
     attempts = 8
     for attempt in range(1, attempts + 1):
-        if not try_software_bootloader():
+        jumped = try_software_bootloader()
+        for _ in range(5 if attempt > 1 else 0):    # firmware may still be starting up
+            if jumped:
+                break
+            time.sleep(1)
+            jumped = try_software_bootloader()
+        if not jumped:
             break
         t = wait_for_bootloader(10)
         if t is not None or attempt == attempts:
