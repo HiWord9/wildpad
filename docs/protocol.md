@@ -87,7 +87,8 @@ and *knob left* (B + 1). Offsets below are for the 3-key board (B = 4, 3 profile
 | 7 | 1 | knob clicks per turn (only for drawing) |
 | 8 | 1 | profile after power-up (0-based) |
 | 9 | 1 | light animation speed (1–10) |
-| 10 | 2 | reserved |
+| 10 | 1 | switcher hold after turning: a knob turn with a *key, modifiers held* action keeps them held this long after the last click, 100 ms units (2–30; 0 = 8) |
+| 11 | 1 | reserved |
 | 12 | 22 × 3 | profiles: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see Combos) |
 | 78 | 4 × 12 | combos |
 | 126 | 1 | reserved |
@@ -128,6 +129,7 @@ input and trigger.
 | 8 | center the axis | |
 | 9 | profile | p1 profile (0-based), 0xF0 next, 0xF1 previous; p2 0 switch, 1 only while held |
 | 10 | lights | p1 0 on/off, 1 brighter, 2 dimmer (brightness changes are stored after 3 s) |
+| 11 | key, modifiers held | like type 1, but Ctrl / Alt / Win (not Shift) stay held: on a button while it is held (the key and Shift are tapped once), on a knob turn until the knob has stopped for the switcher hold time (the key and Shift are tapped on every click). For Alt+Tab-style switchers. |
 
 Keys, media keys, mouse buttons and gamepad buttons stay pressed while their input is
 held; knob clicks press and release them once per click. The gamepad interface is
@@ -141,7 +143,7 @@ present whenever any profile or combo uses type 6 or 7.
 {
   "format": "detent-settings", "version": 3,
   "options": { "brightness": 128, "holdMs": 300, "debounceMs": 5, "tapMs": 4,
-               "clicksPerTurn": 20, "startProfile": 1, "lightSpeed": 5,
+               "clicksPerTurn": 20, "startProfile": 1, "lightSpeed": 5, "turnHoldMs": 800,
                "reverseKnob": false, "halfStep": false, "xbox360": false },
   "profiles": [ { "color": "#00aaff", "light": "solid",
                   "actions": { "key1": "media:previous-track", "knob": "media:mute",
@@ -151,6 +153,6 @@ present whenever any profile or combo uses type 6 or 7.
 }
 ```
 
-Action texts are listed by `detent.py actions`. `rightAway` lists the buttons whose
+Action texts are listed by `detent.py actions`; `key:alt+tab:hold` is type 11. `rightAway` lists the buttons whose
 own action is sent right away; when it is missing, modifier-only keys and gamepad
 buttons are sent right away and everything else on release.

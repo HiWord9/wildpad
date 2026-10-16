@@ -22,8 +22,11 @@ any speed, and its app can only assign a key per button. Detent replaces both.
   example *hold the knob and turn it* for brightness, *hold key 1 and press key 2* for
   a shortcut. Holding a key on its own (long press) can do something else too. A key's
   own action can wait until you let go (so it doesn't fire when you use a combo) or be
-  held right away, so combos add to it: *knob = Alt, turn = Tab* is Alt+Tab window
-  switching.
+  held right away, so combos add to it.
+- **App switchers.** A shortcut can keep Ctrl / Alt / Win held while the key is tapped:
+  on a key for as long as you hold it, on the knob for as long as you keep turning.
+  *Turn the knob* and windows switch like Alt+Tab, stop and the window is picked; or
+  *press the knob* to open the switcher and turn to move through it.
 - **Three profiles**, each with its own light color and effect; switch with a combo,
   a key or the app.
 - **Gamepad axis.** The knob can be an absolute gamepad axis (stick or triggers) with a
@@ -93,15 +96,17 @@ choose what it does.
 |---|---|---|---|---|---|
 | 1, cyan | previous track | play / pause | next track | mute | volume |
 | 2, amber | Ctrl+C | Ctrl+V | Ctrl+Z | Enter | scroll |
-| 3, teal | Win+Tab (task view) | Win+D (desktop) | Win+Shift+S (screenshot) | Alt | Ctrl+Tab / Ctrl+Shift+Tab (browser tabs) |
+| 3, teal | Win+D (desktop) | Win+E (files) | Win+Shift+S (screenshot) | Win+Tab (task view) | switch windows (Alt+Tab) |
 
 In every profile: **hold the knob and press key 1, 2 or 3** to switch profiles,
 **hold the knob and turn it** to change the brightness. Because the knob starts combos,
 its own action (mute) is sent when you let go of it.
 
-Profile 3 switches windows: **hold the knob and turn it** like Alt+Tab, let go to pick
-the window. The knob holds Alt right away there, and its own turn combos (Tab /
-Shift+Tab) replace the brightness combos in that profile.
+Profile 3 switches windows: **turn the knob** and Alt stays held while you turn, so the
+window switcher moves along; stop for 0.8 s and the window is picked. **Hold the knob
+and turn** switches browser tabs there instead of the brightness. The preset *Switch
+windows: press and turn* does it the other way round: pressing the knob opens the
+switcher (Alt+Tab with Alt held) and turning moves through it until you let go.
 
 | Plug in while holding | What happens |
 |---|---|

@@ -128,13 +128,17 @@ def test_gamepad():
 
 
 def test_switch():
-    raw = simulate("sw", [TEST / "test_switch.c", *FIRMWARE], 0x300, 1 + 2 * 20,
+    raw = simulate("sw", [TEST / "test_switch.c", *FIRMWARE], 0x300, 1 + 2 * 30,
                    {"main.c": ["main=fw_main"], "settings.c": ["SET_load=SET_load_real"]})
     reps = [(raw[1 + 2 * i], raw[2 + 2 * i]) for i in range(raw[0])]
     alt, shift, tab = 0x04, 0x02, 0x2B
-    expected = [(alt, 0), (alt, tab), (alt, 0), (alt, tab), (alt, 0), (alt | shift, tab), (alt, 0), (0, 0)]
-    check(reps == expected, "right away: knob = Alt held, turn = Tab / Shift+Tab -> Alt+Tab window switching",
-          f"{[(hex(m), hex(k)) for m, k in reps]}")
+    a = [(alt, tab), (alt, 0), (alt, tab), (alt, 0), (alt, tab), (alt, 0), (alt | shift, tab), (alt, 0), (0, 0)]
+    b = [(alt, tab), (alt, 0), (alt, tab), (alt, 0), (alt | shift, tab), (alt, 0), (0, 0)]
+    fmt = lambda r: [(hex(m), hex(k)) for m, k in r]
+    check(reps[:9] == a, "window switching: knob press = Alt+Tab with Alt held, turn = Tab / Shift+Tab",
+          f"{fmt(reps[:9])}")
+    check(reps[9:] == b, "window switching: turning alone holds Alt between clicks, lets go when it stops",
+          f"{fmt(reps[9:])}")
 
 
 def main():

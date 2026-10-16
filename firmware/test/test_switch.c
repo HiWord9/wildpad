@@ -1,10 +1,11 @@
-// Simulator test for a key whose own action is sent right away (ACT_NOW):
-// window switching with the knob. Settings: knob press = Alt (right away),
-// hold knob + turn right = Tab, hold knob + turn left = Shift+Tab.
-// The factory all-profiles combos for the same controls (brightness) must lose
-// against these profile combos.
-// Script: hold the knob, 2 clicks right, 1 click left, release.
-// Expected keyboard reports: Alt, Alt+Tab, Alt, Alt+Tab, Alt, Alt+Shift+Tab, Alt, nothing.
+// Simulator test for window switching with the knob, both ways:
+//  A) knob press = Alt+Tab keeping Alt held (ACT_KEY_HOLD, sent right away with
+//     ACT_NOW); hold knob + turn right = Tab, + turn left = Shift+Tab. These profile
+//     combos must win over the factory all-profiles brightness combos.
+//     Script: hold the knob, 2 clicks right, 1 left, release.
+//  B) turn right = Alt+Tab, turn left = Alt+Shift+Tab, both ACT_KEY_HOLD: Alt stays
+//     held between clicks and is let go once the knob stops (0.8 s).
+//     Script: 2 clicks right, 1 left, wait.
 
 #pragma nooverlay
 #include "ch554.h"
@@ -20,9 +21,13 @@ void SET_load(void) {
   __xdata uint8_t* c;
   SET_defaults(cfg);
   a = ACTION(0, BOARD_KNOB_BUTTON);
-  a->type = ACT_KEY | ACT_NOW;
-  a->p1 = 0x04;                                // Alt
-  a->p2 = 0;
+  a->type = ACT_KEY_HOLD | ACT_NOW;
+  a->p1 = 0x04;                                // Alt+Tab, Alt held
+  a->p2 = 0x2B;
+  a = ACTION(0, IN_RIGHT);
+  a->type = ACT_KEY_HOLD; a->p1 = 0x04; a->p2 = 0x2B;           // Alt+Tab
+  a = ACTION(0, IN_LEFT);
+  a->type = ACT_KEY_HOLD; a->p1 = 0x06; a->p2 = 0x2B;           // Alt+Shift+Tab
   // the factory combos stay: hold knob + turn = brightness in all profiles; these
   // profile-1 combos with the same controls come later in the list and must win
   c = COMBO(5);
@@ -38,7 +43,7 @@ volatile __bit USB_featureNew;
 __xdata uint8_t USB_featureOut[FEATURE_REPORT_LEN];
 __xdata uint8_t USB_featureIn[FEATURE_REPORT_LEN];
 
-#define LOG_MAX 20
+#define LOG_MAX 30
 __xdata __at (0x0300) volatile uint8_t log_count;
 __xdata __at (0x0301) volatile uint8_t log_buf[LOG_MAX][2];   // modifiers, first key
 
@@ -89,7 +94,15 @@ void T0_ISR(void) __interrupt(INT_NO_TMR0) {
     if(++phase == 4) phase = 0;
   }
   if(t == 800) P3 |= 0x08;                    // release the knob
-  if(t == 1000) done();
+  if(t >= 1100 && t < 1180 && tick10 == 0) {                // B: 2 clicks right
+    P3 = (P3 & 0xFC) | CW[phase];
+    if(++phase == 4) phase = 0;
+  }
+  if(t >= 1300 && t < 1340 && tick10 == 0) {                // 1 click left
+    P3 = (P3 & 0xFC) | CCW[phase];
+    if(++phase == 4) phase = 0;
+  }
+  if(t == 2600) done();
 }
 
 void main(void) {

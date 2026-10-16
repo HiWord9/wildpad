@@ -48,6 +48,8 @@
 #define S_DETENTS           7           // clicks per turn (drawing only)
 #define S_START_PROFILE     8           // profile after power-up
 #define S_LED_SPEED         9           // 1 slow .. 10 fast
+#define S_TURN_HOLD         10          // ACT_KEY_HOLD on a knob turn: modifiers stay held this
+                                        // long after the last click, 100 ms units (0 = 800 ms)
 #define S_CHECKSUM          (SETTINGS_SIZE - 1)
 
 // S_FLAGS
@@ -76,7 +78,11 @@
 #define ACT_CENTER          8           // knob axis position becomes center
 #define ACT_PROFILE         9           // p1 = profile or PROF_NEXT / PROF_PREV, p2 = PROF_*
 #define ACT_LIGHT           10          // p1 = LIGHT_*
-#define ACT_LAST            ACT_LIGHT
+#define ACT_KEY_HOLD        11          // like ACT_KEY, but Ctrl / Alt / Win stay held: while
+                                        // the button is held, or on a knob turn until the knob
+                                        // stops; the key and Shift are tapped (Alt+Tab style)
+#define ACT_LAST            ACT_KEY_HOLD
+#define HOLD_MODS           0xDD        // modifiers ACT_KEY_HOLD keeps held (all but Shift)
 #define ACT_TYPE_MASK       0x1F
 #define ACT_NOW             0x80        // button's own action: send on press even when the
                                         // button starts combos (stays held, combos still work)

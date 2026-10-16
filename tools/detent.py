@@ -50,14 +50,14 @@ USB_LAYOUTS = ["keyboard", "keyboard + gamepad", "Xbox 360 controller"]
 
 # ----------------------------------------------------------------- settings layout
 S_MAGIC, S_VERSION, S_FLAGS, S_BRIGHTNESS, S_HOLD, S_DEBOUNCE, S_TAP, S_DETENTS, \
-    S_START, S_SPEED = range(10)
+    S_START, S_SPEED, S_TURN_HOLD = range(11)
 MAGIC = 0xA5
 FLAG_INVERT, FLAG_HALFSTEP, FLAG_XBOX360 = 0x01, 0x02, 0x04
 COMBO_EMPTY, ALL_PROFILES = 0xFF, 7
 EFFECTS = ["off", "solid", "breathe", "rainbow", "press", "steering"]
 
 (ACT_NONE, ACT_KEY, ACT_MEDIA, ACT_MOUSE_BTN, ACT_SCROLL, ACT_MOUSE_MOVE, ACT_PAD_BTN,
- ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT) = range(11)
+ ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT, ACT_KEY_HOLD) = range(12)
 ACT_TYPE_MASK, ACT_NOW = 0x1F, 0x80
 PROF_NEXT, PROF_PREV = 0xF0, 0xF1
 AXES = ["lx", "ly", "rx", "ry", "triggers"]
@@ -105,7 +105,7 @@ class ActionError(ValueError):
 
 def default_now(a):
     """Modifier-only keys and gamepad buttons are held right away by default."""
-    return (a[0] == ACT_KEY and a[1] and not a[2]) or a[0] == ACT_PAD_BTN
+    return (a[0] == ACT_KEY and a[1] and not a[2]) or a[0] in (ACT_PAD_BTN, ACT_KEY_HOLD)
 
 
 def _int8(v):
@@ -127,8 +127,9 @@ def parse_action(text):
         if kind in ("", "none"):
             return (ACT_NONE, 0, 0)
         if kind == "key":
+            combo, _, flag = arg.partition(":")
             mods, code = 0, 0
-            for part in arg.split("+"):
+            for part in combo.split("+"):
                 if part in MODIFIERS:
                     mods |= MODIFIERS[part]
                 elif part in KEYCODES:
@@ -137,7 +138,9 @@ def parse_action(text):
                     code = int(part, 16)
                 else:
                     raise ActionError(f"unknown key '{part}'")
-            return (ACT_KEY, mods, code)
+            if flag not in ("", "hold"):
+                raise ActionError(f"unknown key option '{flag}' (only :hold)")
+            return (ACT_KEY_HOLD if flag else ACT_KEY, mods, code)
         if kind == "media":
             u = MEDIA[arg] if arg in MEDIA else int(arg, 0)
             return (ACT_MEDIA, u & 0xFF, u >> 8)
@@ -179,11 +182,11 @@ def format_action(a):
     t, p1, p2 = a
     if t == ACT_NONE:
         return "none"
-    if t == ACT_KEY:
+    if t in (ACT_KEY, ACT_KEY_HOLD):
         parts = [n for n, b in MODIFIERS.items() if p1 & b]
         if p2:
             parts.append(KEYNAMES.get(p2, f"0x{p2:02x}"))
-        return "key:" + "+".join(parts)
+        return "key:" + "+".join(parts) + (":hold" if t == ACT_KEY_HOLD else "")
     if t == ACT_MEDIA:
         u = p1 | p2 << 8
         name = next((n for n, v in MEDIA.items() if v == u), None)
@@ -329,7 +332,8 @@ class Settings:
                 "brightness": self.b[S_BRIGHTNESS], "holdMs": self.b[S_HOLD] * 10,
                 "debounceMs": self.b[S_DEBOUNCE], "tapMs": self.b[S_TAP],
                 "clicksPerTurn": self.b[S_DETENTS], "startProfile": self.b[S_START] + 1,
-                "lightSpeed": self.b[S_SPEED], "reverseKnob": bool(f & FLAG_INVERT),
+                "lightSpeed": self.b[S_SPEED], "turnHoldMs": (self.b[S_TURN_HOLD] or 8) * 100,
+                "reverseKnob": bool(f & FLAG_INVERT),
                 "halfStep": bool(f & FLAG_HALFSTEP), "xbox360": bool(f & FLAG_XBOX360)},
             "profiles": [{"color": self.color(p), "light": self.effect(p),
                           "actions": {L.names[i]: format_action(self.action(p, i))
@@ -353,6 +357,7 @@ class Settings:
         b[S_DETENTS] = max(4, min(100, int(o.get("clicksPerTurn", b[S_DETENTS]))))
         b[S_START] = max(0, min(L.profiles - 1, int(o.get("startProfile", b[S_START] + 1)) - 1))
         b[S_SPEED] = max(1, min(10, int(o.get("lightSpeed", b[S_SPEED]))))
+        b[S_TURN_HOLD] = max(2, min(30, int(o.get("turnHoldMs", (b[S_TURN_HOLD] or 8) * 100)) // 100))
         flags = 0
         flags |= FLAG_INVERT if o.get("reverseKnob") else 0
         flags |= FLAG_HALFSTEP if o.get("halfStep") else 0
@@ -502,6 +507,7 @@ OPTIONS = {
     "brightness": (S_BRIGHTNESS, 0, 255, 1), "long-press-ms": (S_HOLD, 100, 1000, 10),
     "debounce-ms": (S_DEBOUNCE, 1, 30, 1), "tap-ms": (S_TAP, 1, 50, 1),
     "clicks-per-turn": (S_DETENTS, 4, 100, 1), "light-speed": (S_SPEED, 1, 10, 1),
+    "turn-hold-ms": (S_TURN_HOLD, 200, 3000, 100),
 }
 FLAG_OPTIONS = {"reverse-knob": FLAG_INVERT, "half-step": FLAG_HALFSTEP, "xbox360": FLAG_XBOX360}
 
@@ -510,6 +516,9 @@ def cmd_actions():
     print("""Actions
   none
   key:ctrl+shift+a      keyboard key with modifiers (ctrl shift alt win, rctrl ...)
+  key:alt+tab:hold      Ctrl / Alt / Win stay held, the key (and Shift) is tapped: on a
+                        button while it is held, on a knob turn until the knob stops
+                        (turn-hold-ms). For Alt+Tab-style switchers.
   media:volume-up       media key
   mouse:left            mouse button: left right middle back forward
   scroll:-1             scroll down one notch (scroll:0,1 = one notch right)

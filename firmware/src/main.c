@@ -134,6 +134,7 @@ static __xdata uint8_t mouseRep[6] = {REPORT_ID_MOUSE, 0, 0, 0, 0, 0};
 static __xdata uint8_t newKbd[9];
 static __bit kbdDirty, conDirty, mouseDirty, padDirty;
 static __bit recompose;                   // active actions changed since last compose
+static uint8_t turnMods;                  // ACT_KEY_HOLD modifiers held between knob clicks
 static __xdata int8_t wheelAcc, hwheelAcc, moveX, moveY;
 
 // Action currently held by each button, and by the knob step being replayed
@@ -180,6 +181,7 @@ static void HID_compose(void) {
   for(i = 0; i < 9; i++) newKbd[i] = 0;
   for(i = 0; i < BOARD_BUTTONS; i++) addToReport(&active[i], &nkeys, &con, &mbtn);
   addToReport(&knobAct, &nkeys, &con, &mbtn);
+  newKbd[1] |= turnMods;
 
   for(i = 1; i < 9; i++) {
     if(kbdRep[i] != newKbd[i]) { kbdRep[i] = newKbd[i]; kbdDirty = 1; }
@@ -213,7 +215,7 @@ static void clearAction(__xdata action_t* a) {
 }
 
 static void copyAction(__xdata action_t* dst, __xdata action_t* src) {
-  dst->type = src->type;
+  dst->type = src->type == ACT_KEY_HOLD ? ACT_KEY : src->type;
   dst->p1 = src->p1;
   dst->p2 = src->p2;
   recompose = 1;
@@ -221,7 +223,7 @@ static void copyAction(__xdata action_t* dst, __xdata action_t* src) {
 
 // Actions that stay active while their input is held
 static __bit isHeldType(uint8_t t) {
-  return t == ACT_KEY || t == ACT_MEDIA || t == ACT_MOUSE_BTN || t == ACT_PAD_BTN;
+  return t == ACT_KEY || t == ACT_KEY_HOLD || t == ACT_MEDIA || t == ACT_MOUSE_BTN || t == ACT_PAD_BTN;
 }
 
 static void changeBrightness(int8_t d) {
@@ -372,6 +374,7 @@ static void LED_task(void) {
 #define BS_HELD     2                     // action in active[] held until release
 #define BS_TAP      3                     // tapped action held briefly, then released
 #define BS_USED     4                     // was used for a combo: nothing on release
+#define BS_TAPKEY   5                     // ACT_KEY_HOLD: key tapped, then only modifiers held
 static __xdata uint8_t  bstate[BOARD_BUTTONS];
 static __xdata uint16_t btime[BOARD_BUTTONS];
 
@@ -399,7 +402,13 @@ static void startAction(uint8_t i, __xdata action_t* a) {
     active[i].p1 = prof;
     setProfile(a->p1);
   }
-  else if(isHeldType(a->type)) copyAction(&active[i], a);
+  else if(isHeldType(a->type)) {
+    copyAction(&active[i], a);
+    if(a->type == ACT_KEY_HOLD) {
+      bstate[i] = BS_TAPKEY;
+      btime[i] = now;
+    }
+  }
   else oneShot(a);
 }
 
@@ -464,6 +473,19 @@ static void BTN_task(void) {
         }
         break;
 
+      case BS_TAPKEY:                                          // key delivered: keep the modifiers
+        if(!(btn & bit)) {
+          handled &= ~bit;
+          releaseAction(i);
+        }
+        else if(!outputBusy() && (uint16_t)(now - btime[i]) >= cfg[S_TAP_MS]) {
+          active[i].p1 &= HOLD_MODS;
+          active[i].p2 = 0;
+          recompose = 1;
+          bstate[i] = BS_HELD;
+        }
+        break;
+
       case BS_TAP:                                             // release after delivery
         if(!outputBusy() && (uint16_t)(now - btime[i]) >= cfg[S_TAP_MS]) releaseAction(i);
         break;
@@ -479,6 +501,7 @@ static void BTN_task(void) {
 #define STEPQ_SIZE  32
 static __xdata uint8_t stepQ[STEPQ_SIZE];
 static __xdata uint8_t qHead, qLen;
+static __xdata uint16_t turnTime;         // last knob click with ACT_KEY_HOLD
 static __xdata uint8_t knobPhase;                // 0 idle, 1 pressed, 2 released (gap)
 static __xdata uint16_t knobTime;
 
@@ -514,6 +537,11 @@ static void KNOB_task(void) {
   __xdata action_t* a;
 
   KNOB_collect();
+  if(turnMods && !qLen && !knobPhase &&                      // knob stopped: let go of them
+     (uint16_t)(now - turnTime) >= (uint16_t)(cfg[S_TURN_HOLD] ? cfg[S_TURN_HOLD] : 8) * 100) {
+    turnMods = 0;
+    recompose = 1;
+  }
   if(knobPhase) {
     if(outputBusy() || (uint16_t)(now - knobTime) < cfg[S_TAP_MS]) return;
     if(knobPhase == 1) {                                       // press delivered -> release
@@ -530,6 +558,14 @@ static void KNOB_task(void) {
     qLen--;
     a = (entry & 0x0F) == NO_INPUT ? baseAction(entry >> 4) : findCombo(entry & 0x0F, entry >> 4);
     if(!a) continue;
+    if(a->type == ACT_KEY_HOLD) {                              // keep these held between clicks
+      turnMods = a->p1 & HOLD_MODS;
+      turnTime = now;
+    }
+    else if(turnMods) {
+      turnMods = 0;
+      recompose = 1;
+    }
     if(isHeldType(a->type)) {                                  // press now, release later
       copyAction(&knobAct, a);
       knobPhase = 1;
