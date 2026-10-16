@@ -86,7 +86,7 @@ macropad* keeps them.
 
 | Do this | What happens |
 |---|---|
-| Hold the knob button for 3 s | Toggle keyboard ↔ wheel mode (LEDs fill up yellow) |
+| Hold the knob button for 3 s, then release | Toggle keyboard ↔ wheel mode (LEDs fill up yellow; the switch happens on release) |
 | Plug in while holding key 1 | Bootloader, for flashing |
 | Plug in while holding key 3 | Start in keyboard mode once (rescue) |
 

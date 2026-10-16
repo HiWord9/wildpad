@@ -37,6 +37,8 @@ static int16_t  rel;                      // pos - center, clamped in wheel mode
 static int16_t  lastRel = 0x7FFF;         // rel the cached axis value was computed for
 static uint16_t gestureStart;
 static __bit    gesture;
+static __bit    gestureArmed;             // all keys released since boot / since the last switch
+static __bit    gestureDone;              // held long enough: switch when the knob is let go
 static __bit    rebootPending;
 static __bit    bootPending;
 
@@ -210,7 +212,7 @@ static void LED_task(void) {
   ledPhase++;
 
   if(gesture && (uint16_t)(now - gestureStart) > 600) {        // mode-switch progress
-    lvl = (uint16_t)(now - gestureStart) / (MODE_HOLD_MS / 250);
+    lvl = gestureDone ? 250 : (uint16_t)(now - gestureStart) / (MODE_HOLD_MS / 250);
     for(i = 0; i < NEO_COUNT; i++) LED_rgb(i, lvl, lvl >> 1, 0);
   }
   else if(cfg.led_mode == LED_OFF) {
@@ -623,10 +625,17 @@ void main(void) {
     btn = INP_buttons();
     pos = INP_position();
 
-    // hold the knob button alone for 3 s to switch keyboard <-> wheel
-    if(btn == BTN_BIT(BOARD_KNOB_BUTTON) && !(cfg.flags & FLAG_NO_GESTURE)) {
+    // hold the knob button alone for 3 s, then let go, to switch keyboard <-> wheel.
+    // Switching on release (and arming only after all keys were up) keeps a knob that
+    // is still held after the restart from switching straight back.
+    if(!btn) {
+      if(gestureDone) toggleMode();
+      gestureArmed = 1;
+    }
+    if(gestureDone) {}
+    else if(gestureArmed && btn == BTN_BIT(BOARD_KNOB_BUTTON) && !(cfg.flags & FLAG_NO_GESTURE)) {
       if(!gesture) { gesture = 1; gestureStart = now; }
-      else if((uint16_t)(now - gestureStart) >= MODE_HOLD_MS) toggleMode();
+      else if((uint16_t)(now - gestureStart) >= MODE_HOLD_MS) gestureDone = 1;
     }
     else gesture = 0;
 
