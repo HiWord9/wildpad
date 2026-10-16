@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TISHRIC Knob Setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --alu: #dfe2df;
+  --alu-light: #f1f3f0;
+  --panel: #fbfcfa;
+  --ink: #1f272b;
+  --muted: #5d676b;
+  --line: #c6cbc7;
+  --led: #e2336b;
+  --led-soft: #fbe3ea;
+  --ok: #24935a;
+  --warn: #b5660f;
+  --key: #2b3337;
+  --key-top: #3a4449;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --alu: #22282b; --alu-light: #2b3236; --panel: #1b2023; --ink: #e8ece9; --muted: #a0aaad;
+    --line: #3d464a; --led: #ff4d82; --led-soft: #3a2029; --ok: #3cc47c; --warn: #e8a14a;
+    --key: #11161a; --key-top: #1c2327; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--alu); color: var(--ink);
+  font: 16px/1.5 "Golos Text", system-ui, "Segoe UI", sans-serif;
+}
+main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 64px; }
+h1 { font-size: 1.6rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 12px; }
+p { margin: 0 0 10px; max-width: 70ch; }
+.muted { color: var(--muted); }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+#conn { font-size: .95rem; color: var(--muted); }
+#conn b { color: var(--ink); font-weight: 600; }
+
+/* the device: the one bold element */
+.stage { background: var(--alu-light); border: 1px solid var(--line); border-radius: 22px; padding: 18px 18px 10px; }
+svg#pad { width: 100%; height: auto; display: block; }
+.part { cursor: pointer; }
+.part:focus { outline: none; }
+.part:focus-visible .cap, .part:focus-visible .knobring { stroke: var(--led); stroke-width: 4; }
+.cap { fill: var(--key-top); stroke: var(--key); stroke-width: 3; transition: fill .08s; }
+.part.selected .cap, .part.selected .knobring { stroke: var(--led); stroke-width: 4; }
+.part.down .cap { fill: var(--led); }
+.glow { fill: var(--led); opacity: 0; transition: opacity .12s; }
+.part.down .glow { opacity: .45; }
+.caplabel { fill: #d9dfdc; font-size: 15px; font-weight: 600; pointer-events: none; }
+.knobring { fill: var(--key-top); stroke: var(--key); stroke-width: 3; }
+.knob.down .knobring { fill: var(--led); }
+.arrow { fill: none; stroke: var(--muted); stroke-width: 5; stroke-linecap: round; }
+.part.selected .arrow { stroke: var(--led); }
+.arrowhit { fill: transparent; }
+#readout { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: center; padding: 6px 4px 4px; }
+#posnum { font-size: 2.6rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; min-width: 3ch; }
+.bar { position: relative; flex: 1 1 260px; height: 12px; background: var(--alu); border-radius: 6px; border: 1px solid var(--line); }
+.bar i { position: absolute; top: -1px; bottom: -1px; background: var(--led); border-radius: 6px; }
+.bar::after { content: ""; position: absolute; left: 50%; top: -5px; bottom: -5px; width: 2px; background: var(--ink); opacity: .5; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+@media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+section.box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.grid > div { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+button, select, input[type=number] {
+  font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 12px; min-height: 38px;
+}
+button { cursor: pointer; font-weight: 500; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.seg button[aria-pressed="true"] { background: var(--led-soft); border-color: var(--led); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+label.check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; cursor: pointer; }
+label.check input { margin-top: 5px; width: 18px; height: 18px; accent-color: var(--led); }
+.capture {
+  display: inline-flex; align-items: center; min-width: 220px; min-height: 44px; padding: 8px 14px;
+  border: 2px dashed var(--line); border-radius: 10px; font-weight: 600; cursor: text;
+}
+.capture:focus { border-color: var(--led); border-style: solid; outline: none; background: var(--led-soft); }
+.mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.mods label { border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; user-select: none; }
+.mods input { accent-color: var(--led); }
+input[type=range] { accent-color: var(--led); width: min(260px, 100%); }
+.val { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3ch; display: inline-block; }
+#savebar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+#dirty { color: var(--warn); font-weight: 500; }
+#msg { margin-top: 12px; min-height: 1.5em; }
+#msg.err { color: var(--led); font-weight: 600; }
+#msg.ok { color: var(--ok); font-weight: 500; }
+.modecards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modecards button { text-align: left; padding: 12px; min-height: 74px; }
+.modecards button[aria-pressed="true"] { border: 2px solid var(--led); background: var(--led-soft); }
+.modecards small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+dl.help { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+dl.help dt { font-weight: 600; white-space: nowrap; }
+dl.help dd { margin: 0; color: var(--muted); }
+#padtest .bar { margin: 8px 0; }
+.hidden { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>TISHRIC Knob</h1>
+    <div id="conn">Not connected</div>
+  </header>
+
+  <div class="stage">
+    <svg id="pad" viewBox="0 0 560 210" role="group" aria-label="Macropad: pick a key or the knob">
+      <rect x="6" y="6" width="548" height="198" rx="26" style="fill:var(--alu);stroke:var(--line);stroke-width:2"/>
+      <g class="part" data-input="0" tabindex="0" role="button" aria-label="Key 1">
+        <rect class="glow" x="28" y="48" width="114" height="114" rx="20"/>
+        <rect class="cap" x="40" y="60" width="90" height="90" rx="14"/>
+        <text class="caplabel" x="85" y="111" text-anchor="middle">1</text>
+      </g>
+      <g class="part" data-input="1" tabindex="0" role="button" aria-label="Key 2">
+        <rect class="glow" x="148" y="48" width="114" height="114" rx="20"/>
+        <rect class="cap" x="160" y="60" width="90" height="90" rx="14"/>
+        <text class="caplabel" x="205" y="111" text-anchor="middle">2</text>
+      </g>
+      <g class="part" data-input="2" tabindex="0" role="button" aria-label="Key 3">
+        <rect class="glow" x="268" y="48" width="114" height="114" rx="20"/>
+        <rect class="cap" x="280" y="60" width="90" height="90" rx="14"/>
+        <text class="caplabel" x="325" y="111" text-anchor="middle">3</text>
+      </g>
+      <g class="part" data-input="5" tabindex="0" role="button" aria-label="Knob counter-clockwise">
+        <path class="arrowhit" d="M392 20 h50 v60 h-50z"/>
+        <path class="arrow" d="M430 38 A66 66 0 0 0 409 64"/>
+        <path class="arrow" d="M409 64 l2 -14 M409 64 l13 -5"/>
+      </g>
+      <g class="part" data-input="4" tabindex="0" role="button" aria-label="Knob clockwise">
+        <path class="arrowhit" d="M488 20 h60 v60 h-60z"/>
+        <path class="arrow" d="M494 38 A66 66 0 0 1 515 64"/>
+        <path class="arrow" d="M515 64 l-2 -14 M515 64 l-13 -5"/>
+      </g>
+      <g class="part knob" data-input="3" tabindex="0" role="button" aria-label="Knob press">
+        <circle class="glow" cx="462" cy="118" r="64"/>
+        <circle class="knobring" cx="462" cy="118" r="54"/>
+        <g id="knobmark"><rect x="458" y="70" width="8" height="26" rx="4" style="fill:var(--led)"/></g>
+      </g>
+    </svg>
+    <div id="readout">
+      <div><div id="posnum">0</div><div class="muted">position, detents</div></div>
+      <div class="bar" aria-hidden="true"><i id="posbar" style="left:50%;width:0"></i></div>
+      <button id="recenter" disabled>Reset position</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <section class="box" id="intro">
+        <h2>Connect the macropad</h2>
+        <p>This page talks to the TISHRIC Knob firmware directly over USB. No drivers, nothing to install. Use Chrome or Edge.</p>
+        <div class="row"><button class="primary" id="connect">Connect</button></div>
+        <p class="muted">In wheel mode (green LED in the middle) the macropad is an Xbox pad and can’t be configured. Hold the knob button for 3 seconds to switch it back to keyboard mode first.</p>
+        <p id="padmode" class="hidden"></p>
+        <p class="muted" id="nohid"></p>
+      </section>
+
+      <section class="box hidden" id="editor">
+        <h2 id="edtitle">Key 1</h2>
+        <div id="kbdeditor">
+          <p class="muted" id="edhint">In keyboard mode it sends:</p>
+          <div class="seg" id="types" role="group" aria-label="Action type">
+            <button data-type="0">Nothing</button>
+            <button data-type="1">Key</button>
+            <button data-type="2">Media</button>
+            <button data-type="3">Mouse</button>
+            <button data-type="4">Wheel</button>
+          </div>
+          <div id="t1" class="hidden">
+            <div class="row">
+              <span class="capture" id="capture" tabindex="0" aria-label="Press a key combination">Click here and press a key combo</span>
+            </div>
+            <div class="mods" id="mods"></div>
+            <div class="row">
+              <label for="keysel">or pick a key:</label>
+              <select id="keysel"></select>
+            </div>
+          </div>
+          <div id="t2" class="hidden"><select id="mediasel" aria-label="Media key"></select></div>
+          <div id="t3" class="hidden"><select id="mousesel" aria-label="Mouse button"></select></div>
+          <div id="t4" class="hidden">
+            <div class="row">
+              <select id="wheelaxis" aria-label="Wheel axis">
+                <option value="4">Vertical wheel</option>
+                <option value="5">Horizontal wheel</option>
+              </select>
+              <label>by <input type="number" id="wheelamt" min="-20" max="20" value="1" style="width:5em"> notches</label>
+            </div>
+            <p class="muted">Positive scrolls up or right, negative down or left.</p>
+          </div>
+        </div>
+        <div id="padeditor" class="row hidden">
+          <label for="padsel">In wheel mode:</label>
+          <select id="padsel"></select>
+        </div>
+      </section>
+
+      <section class="box hidden" id="modebox">
+        <h2>Mode</h2>
+        <div class="modecards">
+          <button data-mode="0">Keyboard<small>keys, media, mouse</small></button>
+          <button data-mode="1">Steering wheel (Xbox pad)<small>knob = left stick</small></button>
+        </div>
+        <p class="muted" style="margin-top:12px">The macropad reconnects after switching. In wheel mode this page can’t see it: to come back, hold the knob button for 3 seconds (the LEDs fill up yellow).</p>
+      </section>
+    </div>
+
+    <div>
+      <section class="box hidden" id="options">
+        <h2>Steering</h2>
+        <div class="row">
+          <label for="range">Full lock at:</label>
+          <input type="range" id="range" min="1" max="50">
+          <span><span class="val" id="rangev"></span> detents from center</span>
+        </div>
+        <p class="muted">The knob has 20 detents per turn, so 10 means half a turn to full lock.</p>
+        <label class="check"><input type="checkbox" id="clamp"><span>Hard stop at full lock<br><span class="muted">Turning past the limit doesn’t wind up: turning back moves the wheel back right away.</span></span></label>
+        <h2 style="margin-top:18px">Knob</h2>
+        <label class="check"><input type="checkbox" id="invert"><span>Reverse direction</span></label>
+        <label class="check"><input type="checkbox" id="halfstep"><span>Count half steps<br><span class="muted">Turn on if only every second detent registers.</span></span></label>
+        <div class="row">
+          <label for="tap">Key press length per detent:</label>
+          <input type="range" id="tap" min="1" max="30">
+          <span><span class="val" id="tapv"></span> ms</span>
+        </div>
+        <p class="muted">If an app misses fast steps, raise this to 10–20 ms.</p>
+        <h2 style="margin-top:18px">LEDs</h2>
+        <div class="row">
+          <input type="range" id="bright" min="0" max="255" aria-label="LED brightness">
+          <span class="val" id="brightv"></span>
+        </div>
+      </section>
+
+      <section class="box" id="padtest">
+        <h2>Wheel test</h2>
+        <p class="muted" id="padstatus">Switch the macropad to wheel mode and press any of its keys: browsers only reveal a gamepad after its first button press. Then turn the knob.</p>
+        <div class="bar" aria-hidden="true"><i id="padbar" style="left:50%;width:0"></i></div>
+        <div id="padbtns" class="muted"></div>
+      </section>
+
+      <section class="box hidden" id="service">
+        <h2>Maintenance</h2>
+        <div class="row">
+          <button id="defaults">Restore defaults</button>
+          <button id="boot">Enter flashing mode</button>
+        </div>
+        <p class="muted">Only needed for firmware updates. Run flash.bat afterwards.</p>
+      </section>
+    </div>
+  </div>
+
+  <div id="savebar" class="hidden">
+    <button class="primary" id="save" disabled>Save to macropad</button>
+    <span id="dirty"></span>
+  </div>
+  <div id="msg" role="status"></div>
+</main>
+
+<script>
+"use strict";
+const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, SSIZE = 30;
+const CMD = { READ: 1, WRITE: 2, SAVE: 3, DEFAULTS: 4, STATUS: 5, RECENTER: 6, REBOOT: 7, BOOT: 8 };
+const INPUT_NAMES = ["Key 1", "Key 2", "Key 3", "Knob press", "Knob clockwise", "Knob counter-clockwise"];
+const PAD_NAMES = ["Nothing", "A", "B", "X", "Y", "LB", "RB", "LT (left trigger)", "RT (right trigger)", "Back", "Start",
+  "LS (left stick click)", "RS (right stick click)", "D-pad up", "D-pad down",
+  "D-pad left", "D-pad right", "Guide (Xbox button)", "Re-center wheel"];
+const PAD_RL = { 1: "jump in Rocket League", 2: "boost", 3: "powerslide", 8: "throttle", 7: "brake / reverse" };
+const MEDIA = [[0xE9, "Volume up"], [0xEA, "Volume down"], [0xE2, "Mute"], [0xCD, "Play / pause"],
+  [0xB5, "Next track"], [0xB6, "Previous track"], [0xB7, "Stop"], [0x6F, "Brightness up"], [0x70, "Brightness down"],
+  [0x192, "Calculator"], [0x196, "Browser"], [0x18A, "Mail"]];
+const MOUSE = [[1, "Left button"], [2, "Right button"], [4, "Middle button"], [8, "Back"], [16, "Forward"]];
+const MODS = [[0x01, "Ctrl"], [0x02, "Shift"], [0x04, "Alt"], [0x08, "Win"], [0x10, "Right Ctrl"], [0x20, "Right Shift"], [0x40, "AltGr"], [0x80, "Right Win"]];
+const MOD_CODES = { ControlLeft: 0x01, ShiftLeft: 0x02, AltLeft: 0x04, MetaLeft: 0x08, ControlRight: 0x10, ShiftRight: 0x20, AltRight: 0x40, MetaRight: 0x80 };
+
+// KeyboardEvent.code -> [HID usage, label]
+const KEYS = (() => {
+  const k = [];
+  for (let i = 0; i < 26; i++) { const c = String.fromCharCode(65 + i); k.push(["Key" + c, 4 + i, c]); }
+  "1234567890".split("").forEach((c, i) => k.push(["Digit" + c, 30 + i, c]));
+  [["Enter", 40, "Enter"], ["Escape", 41, "Esc"], ["Backspace", 42, "Backspace"], ["Tab", 43, "Tab"], ["Space", 44, "Space"],
+   ["Minus", 45, "-"], ["Equal", 46, "="], ["BracketLeft", 47, "["], ["BracketRight", 48, "]"], ["Backslash", 49, "\\"],
+   ["Semicolon", 51, ";"], ["Quote", 52, "'"], ["Backquote", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"],
+   ["CapsLock", 57, "Caps Lock"]].forEach(x => k.push(x));
+  for (let i = 1; i <= 12; i++) k.push(["F" + i, 57 + i, "F" + i]);
+  [["PrintScreen", 70, "Print Screen"], ["ScrollLock", 71, "Scroll Lock"], ["Pause", 72, "Pause"], ["Insert", 73, "Insert"],
+   ["Home", 74, "Home"], ["PageUp", 75, "Page Up"], ["Delete", 76, "Delete"], ["End", 77, "End"], ["PageDown", 78, "Page Down"],
+   ["ArrowRight", 79, "→ Right arrow"], ["ArrowLeft", 80, "← Left arrow"], ["ArrowDown", 81, "↓ Down arrow"], ["ArrowUp", 82, "↑ Up arrow"],
+   ["NumLock", 83, "Num Lock"], ["NumpadDivide", 84, "Num /"], ["NumpadMultiply", 85, "Num *"], ["NumpadSubtract", 86, "Num −"],
+   ["NumpadAdd", 87, "Num +"], ["NumpadEnter", 88, "Num Enter"]].forEach(x => k.push(x));
+  for (let i = 1; i <= 9; i++) k.push(["Numpad" + i, 88 + i, "Num " + i]);
+  k.push(["Numpad0", 98, "Num 0"], ["NumpadDecimal", 99, "Num ."], ["IntlBackslash", 100, "\\ (ISO key)"], ["ContextMenu", 101, "Menu"]);
+  for (let i = 13; i <= 24; i++) k.push(["F" + i, 91 + i, "F" + i]);
+  return k;
+})();
+const keyLabel = code => (KEYS.find(k => k[1] === code) || [0, 0, "0x" + code.toString(16)])[2];
+
+let dev = null, seq = 0, cfg = null, fw = 0, selected = 0, dirty = false, busy = Promise.resolve();
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function say(text, kind = "") { const m = $("msg"); m.textContent = text; m.className = kind; }
+
+// ---------------- protocol ----------------
+function serial(fn) { const p = busy.then(fn, fn); busy = p.catch(() => {}); return p; }
+
+function command(c, payload = [], wait = true) {
+  return serial(async () => {
+    seq = seq % 250 + 1;
+    const buf = new Uint8Array(FLEN);
+    buf[0] = c; buf[1] = seq; buf.set(payload, 2);
+    await dev.sendFeatureReport(0, buf);
+    if (!wait) return null;
+    for (let i = 0; i < 60; i++) {
+      await sleep(5);
+      const dv = await dev.receiveFeatureReport(0);
+      let b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+      if (b.length === FLEN + 1) b = b.subarray(1);
+      if (b[0] === c && b[1] === seq) {
+        if (b[2] !== 0) throw new Error("the macropad rejected the command (code " + b[2] + ")");
+        return b;
+      }
+    }
+    throw new Error("no answer from the macropad");
+  });
+}
+
+function checksum(s) { let x = 0; for (let i = 0; i < SSIZE - 1; i++) x = (x + s[i]) & 255; s[SSIZE - 1] = x; return s; }
+
+async function pushSettings() {
+  await command(CMD.WRITE, checksum(cfg));
+  dirty = true; renderDirty();
+}
+
+// ---------------- connection ----------------
+async function connect() {
+  if (!("hid" in navigator)) return;
+  try {
+    const list = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: PID, usagePage: PAGE }] });
+    if (list.length) await attach(list[0]);
+  } catch (e) { say("Could not connect: " + e.message, "err"); }
+}
+
+async function attach(d) {
+  try {
+    if (!d.opened) await d.open();
+    dev = d;
+    dev.addEventListener("inputreport", onLive);
+    const r = await command(CMD.READ);
+    fw = r[3];
+    cfg = new Uint8Array(r.slice(4, 4 + SSIZE));
+    const st = await command(CMD.STATUS);
+    showLive(new DataView(st.buffer, st.byteOffset + 4, 4));
+    dirty = false;
+    ["editor", "modebox", "options", "service", "savebar"].forEach(id => $(id).classList.remove("hidden"));
+    $("intro").classList.add("hidden");
+    $("recenter").disabled = false;
+    $("conn").innerHTML = "<b>Connected</b>, firmware v" + fw;
+    render();
+    say("");
+  } catch (e) {
+    say("Macropad found but not answering: " + e.message + ". Re-plug the cable.", "err");
+  }
+}
+
+function detach() {
+  dev = null;
+  ["editor", "modebox", "options", "service", "savebar"].forEach(id => $(id).classList.add("hidden"));
+  $("intro").classList.remove("hidden");
+  $("recenter").disabled = true;
+  $("conn").textContent = "Not connected";
+}
+
+// ---------------- live view ----------------
+function onLive(e) { if (e.data.byteLength >= 4) showLive(e.data); }
+
+function showLive(dv) {
+  const pos = dv.getInt16(0, true), btn = dv.getUint8(2);
+  $("posnum").textContent = (pos > 0 ? "+" : "") + pos;
+  $("knobmark").setAttribute("transform", `rotate(${pos * 18} 462 118)`);
+  const range = cfg ? cfg[4] : 10;
+  const f = Math.max(-1, Math.min(1, pos / range));
+  const bar = $("posbar");
+  bar.style.left = (f < 0 ? 50 + f * 50 : 50) + "%";
+  bar.style.width = Math.abs(f) * 50 + "%";
+  document.querySelectorAll(".part").forEach(p => {
+    const i = +p.dataset.input;
+    p.classList.toggle("down", i < 4 && !!(btn & (1 << i)));
+  });
+}
+
+// ---------------- rendering ----------------
+function fillSelect(sel, items) { sel.innerHTML = ""; items.forEach(([v, t]) => sel.add(new Option(t, v))); }
+
+function render() {
+  if (!cfg) return;
+  document.querySelectorAll(".part").forEach(p => p.classList.toggle("selected", +p.dataset.input === selected));
+  $("edtitle").textContent = INPUT_NAMES[selected];
+  const o = 11 + selected * 3, type = cfg[o], p1 = cfg[o + 1], p2 = cfg[o + 2];
+  const shown = type === 5 ? 4 : type;
+  document.querySelectorAll("#types button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.type === shown));
+  for (let t = 1; t <= 4; t++) $("t" + t).classList.toggle("hidden", t !== shown);
+  if (type === 1) {
+    $("capture").textContent = describeKey(p1, p2) || "Click here and press a key combo";
+    document.querySelectorAll("#mods input").forEach(c => c.checked = !!(p1 & +c.value));
+    $("keysel").value = p2;
+  }
+  if (type === 2) $("mediasel").value = p1 | (p2 << 8);
+  if (type === 3) $("mousesel").value = p1;
+  if (type === 4 || type === 5) { $("wheelaxis").value = type; $("wheelamt").value = p1 > 127 ? p1 - 256 : p1; }
+
+  const padOk = selected < 4;
+  $("padeditor").classList.toggle("hidden", !padOk);
+  if (padOk) $("padsel").value = cfg[7 + selected];
+
+  document.querySelectorAll(".modecards button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.mode === cfg[2]));
+  $("range").value = cfg[4]; $("rangev").textContent = cfg[4];
+  $("tap").value = cfg[6]; $("tapv").textContent = cfg[6];
+  $("bright").value = cfg[5]; $("brightv").textContent = cfg[5];
+  $("clamp").checked = !!(cfg[3] & 4);
+  $("invert").checked = !!(cfg[3] & 1);
+  $("halfstep").checked = !!(cfg[3] & 2);
+}
+
+function describeKey(mods, code) {
+  const parts = MODS.filter(([b]) => mods & b).map(([, n]) => n);
+  if (code) parts.push(keyLabel(code));
+  return parts.join(" + ");
+}
+
+function renderDirty() {
+  $("dirty").textContent = dirty ? "Changes are live, but they are lost on unplug until you save." : "";
+  $("save").disabled = !dirty;
+}
+
+async function setAction(type, p1, p2) {
+  const o = 11 + selected * 3;
+  cfg[o] = type; cfg[o + 1] = p1 & 255; cfg[o + 2] = p2 & 255;
+  render();
+  try { await pushSettings(); } catch (e) { say(e.message, "err"); }
+}
+
+async function setByte(i, v) {
+  cfg[i] = v; render();
+  try { await pushSettings(); } catch (e) { say(e.message, "err"); }
+}
+
+async function setFlag(bit, on) { await setByte(3, on ? (cfg[3] | bit) : (cfg[3] & ~bit)); }
+
+// ---------------- wiring ----------------
+function init() {
+  if (!("hid" in navigator)) {
+    $("connect").disabled = true;
+    $("nohid").textContent = "This browser can’t talk to USB devices. Open the page in Google Chrome or Microsoft Edge.";
+  }
+  fillSelect($("keysel"), [[0, "—"], ...KEYS.map(k => [k[1], k[2]])]);
+  fillSelect($("mediasel"), MEDIA);
+  fillSelect($("mousesel"), MOUSE);
+  fillSelect($("padsel"), PAD_NAMES.map((n, i) => [i, PAD_RL[i] ? `${n} — ${PAD_RL[i]}` : n]));
+  MODS.forEach(([bit, name]) => {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="checkbox" value="${bit}"> ${name}`;
+    $("mods").append(l);
+  });
+
+  $("connect").onclick = connect;
+  document.querySelectorAll(".part").forEach(p => {
+    const pick = () => { selected = +p.dataset.input; render(); };
+    p.addEventListener("click", pick);
+    p.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+  });
+  document.querySelectorAll("#types button").forEach(b => b.onclick = () => {
+    const t = +b.dataset.type;
+    if (t === 0) setAction(0, 0, 0);
+    if (t === 1) setAction(1, 0, 0);
+    if (t === 2) setAction(2, MEDIA[0][0] & 255, MEDIA[0][0] >> 8);
+    if (t === 3) setAction(3, 1, 0);
+    if (t === 4) setAction(4, selected === 5 ? -1 : 1, 0);
+  });
+
+  const cap = $("capture");
+  cap.addEventListener("keydown", e => {
+    e.preventDefault(); e.stopPropagation();
+    if (MOD_CODES[e.code] !== undefined) {
+      let m = 0;
+      if (e.ctrlKey) m |= 1; if (e.shiftKey) m |= 2; if (e.altKey) m |= 4; if (e.metaKey) m |= 8;
+      cap.textContent = describeKey(m | MOD_CODES[e.code], 0) + " + …";
+      return;
+    }
+    const k = KEYS.find(x => x[0] === e.code);
+    if (!k) { say("The browser can’t capture this key. Pick it from the list instead.", "err"); return; }
+    let m = 0;
+    if (e.ctrlKey) m |= 1; if (e.shiftKey) m |= 2; if (e.altKey) m |= 4; if (e.metaKey) m |= 8;
+    if (e.getModifierState && e.getModifierState("AltGraph")) m = (m & ~5) | 0x40;
+    setAction(1, m, k[1]);
+    say("");
+    cap.blur();
+  });
+  cap.addEventListener("keyup", e => {
+    // a lone modifier (e.g. just Shift) released without another key
+    if (MOD_CODES[e.code] !== undefined && cap.textContent.endsWith("…")) setAction(1, MOD_CODES[e.code], 0);
+  });
+  $("mods").addEventListener("change", () => {
+    let m = 0;
+    document.querySelectorAll("#mods input").forEach(c => { if (c.checked) m |= +c.value; });
+    setAction(1, m, cfg[11 + selected * 3 + 2]);
+  });
+  $("keysel").onchange = () => setAction(1, cfg[11 + selected * 3 + 1], +$("keysel").value);
+  $("mediasel").onchange = () => { const u = +$("mediasel").value; setAction(2, u & 255, u >> 8); };
+  $("mousesel").onchange = () => setAction(3, +$("mousesel").value, 0);
+  const wheel = () => setAction(+$("wheelaxis").value, Math.max(-20, Math.min(20, +$("wheelamt").value || 0)), 0);
+  $("wheelaxis").onchange = wheel; $("wheelamt").onchange = wheel;
+  $("padsel").onchange = () => setByte(7 + selected, +$("padsel").value);
+
+  $("range").oninput = () => $("rangev").textContent = $("range").value;
+  $("range").onchange = () => setByte(4, +$("range").value);
+  $("tap").oninput = () => $("tapv").textContent = $("tap").value;
+  $("tap").onchange = () => setByte(6, +$("tap").value);
+  $("bright").oninput = () => $("brightv").textContent = $("bright").value;
+  $("bright").onchange = () => setByte(5, +$("bright").value);
+  $("clamp").onchange = e => setFlag(4, e.target.checked);
+  $("invert").onchange = e => setFlag(1, e.target.checked);
+  $("halfstep").onchange = e => setFlag(2, e.target.checked);
+
+  $("save").onclick = async () => {
+    try { await command(CMD.SAVE); dirty = false; renderDirty(); say("Saved to the macropad.", "ok"); }
+    catch (e) { say(e.message, "err"); }
+  };
+  $("recenter").onclick = async () => {
+    try { await command(CMD.RECENTER); const st = await command(CMD.STATUS); showLive(new DataView(st.buffer, st.byteOffset + 4, 4)); }
+    catch (e) { say(e.message, "err"); }
+  };
+  $("defaults").onclick = async () => {
+    try {
+      await command(CMD.DEFAULTS); await command(CMD.SAVE);
+      const r = await command(CMD.READ); cfg = new Uint8Array(r.slice(4, 4 + SSIZE));
+      dirty = false; renderDirty(); render(); say("Defaults restored and saved.", "ok");
+    } catch (e) { say(e.message, "err"); }
+  };
+  document.querySelectorAll(".modecards button").forEach(b => b.onclick = async () => {
+    const mode = +b.dataset.mode;
+    if (mode === cfg[2]) return;
+    try {
+      cfg[2] = mode;
+      await command(CMD.WRITE, checksum(cfg));
+      await command(CMD.SAVE);
+      await command(CMD.REBOOT, [], false);
+      say(mode ? "Switched to wheel mode. The macropad reconnected as an Xbox pad; try it under “Wheel test”."
+               : "Switched to keyboard mode.", "ok");
+    } catch (e) { say(e.message, "err"); }
+  });
+  $("boot").onclick = async () => {
+    try { await command(CMD.BOOT, [], false); say("The macropad is in flashing mode (LEDs white). Now run flash.bat.", "ok"); }
+    catch (e) { say(e.message, "err"); }
+  };
+
+  if ("hid" in navigator) {
+    navigator.hid.addEventListener("disconnect", e => { if (e.device === dev) detach(); });
+    navigator.hid.addEventListener("connect", async e => {
+      if (!dev && e.device.collections.some(c => c.usagePage === PAGE)) { await sleep(300); attach(e.device); }
+    });
+    navigator.hid.getDevices().then(list => {
+      const d = list.find(x => x.vendorId === VID && x.productId === PID && x.collections.some(c => c.usagePage === PAGE));
+      if (d) attach(d);
+    });
+  }
+  renderDirty();
+  requestAnimationFrame(padLoop);
+}
+
+// ---------------- gamepad test (Gamepad API sees the knob in Xbox mode) ----------------
+const PAD_BTN_NAMES = ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Back", "Start", "LS", "RS", "↑", "↓", "←", "→", "Guide"];
+function padLoop() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const p = pads.find(g => /xbox|xinput|045e|028e/i.test(g.id)) || pads[0];
+  if (p) {
+    const x = p.axes[0] || 0;
+    $("padstatus").textContent = `Gamepad detected. Left stick X: ${x.toFixed(2)}`;
+    const bar = $("padbar");
+    bar.style.left = (x < 0 ? 50 + x * 50 : 50) + "%";
+    bar.style.width = Math.abs(x) * 50 + "%";
+    const down = p.buttons.map((b, i) => (b.pressed ? PAD_BTN_NAMES[i] : null)).filter(Boolean);
+    $("padbtns").textContent = down.length ? "Pressed: " + down.join(", ") : "No buttons pressed";
+  }
+  const knobPad = pads.some(g => /045e.*028e|xbox 360/i.test(g.id));
+  const note = $("padmode");
+  note.classList.toggle("hidden", !(knobPad && !dev));
+  note.innerHTML = "<b>Your macropad is in wheel mode right now.</b> Hold the knob button for 3 seconds, wait for it to reconnect, then click Connect.";
+  requestAnimationFrame(padLoop);
+}
+
+init();
+</script>
+</body>
+</html>
