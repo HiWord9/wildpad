@@ -34,12 +34,13 @@ void SET_load(void) {
   put(3, ACT_CENTER, 0, 0);
   put(IN_RIGHT, ACT_AXIS, AXIS_LX, 10);
   put(IN_LEFT, ACT_NONE, 0, 0);
-  for(i = 0; i < N_COMBOS * COMBO_SIZE; i++) cfg[COMBOS_OFFSET + i] = COMBO_EMPTY;
-  c = COMBO(0);
+  for(i = RECORDS_OFFSET; i < RECORDS_END; i++) cfg[i] = REC_END;
+  c = cfg + RECORDS_OFFSET;
   c[0] = 0x00; c[1] = ACT_KEY; c[2] = 0; c[3] = 0x06;                  // long key 1: 'c'
-  c = COMBO(1);
+  c += 4;
   c[0] = (2 << 4) | IN_RIGHT; c[1] = ACT_KEY; c[2] = 0; c[3] = 0x05;   // key 3 + right: 'b'
   cfg[S_CHECKSUM] = SET_checksum(cfg);
+  SET_valid(cfg);                             // notes that the gamepad is used
 }
 
 // ---------------- USB stubs ----------------

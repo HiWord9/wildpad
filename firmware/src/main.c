@@ -9,6 +9,8 @@
 //  - combos: while any key is held, any other key or the knob does something else;
 //    long press of a key does something else. A key that starts combos sends its own
 //    action on release, or right away and held (ACT_NOW, e.g. Alt for Alt+Tab)
+//  - sequences: any action can be a list of steps - tap, hold while the input is
+//    held, wait, and steps for when it is let go
 //  - up to 3 profiles with their own color and light effect
 //  - the gamepad interface is added automatically when a profile uses it
 //  - configuration over a vendor HID feature report, stored in Data-Flash
@@ -41,8 +43,8 @@ static int16_t  pos;                      // knob position (clicks)
 static int16_t  center;                   // knob position treated as axis zero
 static int16_t  knobSeen;                 // knob position already turned into steps
 static int16_t  rel;                      // pos - center, limited to the axis range
-static uint8_t  fakeBtn;                  // buttons held by CMD_INJECT
-static int16_t  fakePos;                  // knob clicks added by CMD_INJECT
+static __xdata uint8_t fakeBtn;           // buttons held by CMD_INJECT
+static __xdata int16_t fakePos;           // knob clicks added by CMD_INJECT
 static __bit    hasPad;                   // gamepad interface present
 static __bit    ledOn = 1;                // lights toggled on
 static __bit    rebootPending;
@@ -91,16 +93,20 @@ static void setProfile(uint8_t p) {
 }
 
 // ===================================================================================
-// Combos
+// Records: combos and sequences
 // ===================================================================================
 // Find the combo "while held, trig does ..." and copy its action to comboAct.
 // held == trig is the long press of that key. A combo of the active profile wins
 // over an all-profiles combo with the same controls.
 static __xdata action_t* findCombo(uint8_t held, uint8_t trig) {
-  uint8_t i, key = (held << 4) | trig, p;
-  __xdata uint8_t* c = cfg + COMBOS_OFFSET;
+  uint8_t i = RECORDS_OFFSET, key = (held << 4) | trig, p;
+  __xdata uint8_t* c;
   __xdata uint8_t* any = 0;
-  for(i = 0; i < N_COMBOS; i++, c += COMBO_SIZE) {
+  while(i < RECORDS_END) {
+    c = cfg + i;
+    if(c[0] == REC_END) break;
+    if(c[0] >= REC_SEQ) { i += 2 + c[1]; continue; }
+    i += 4;
     if(c[0] != key) continue;
     p = c[1] >> 5;
     if(p == prof) { any = c; break; }
@@ -115,15 +121,44 @@ static __xdata action_t* findCombo(uint8_t held, uint8_t trig) {
 
 // Does button h start combos with other inputs (so its own action waits for release)?
 static __bit startsCombos(uint8_t h) {
-  uint8_t i, p;
-  __xdata uint8_t* c = cfg + COMBOS_OFFSET;
-  for(i = 0; i < N_COMBOS; i++, c += COMBO_SIZE) {
-    if(c[0] == COMBO_EMPTY || (c[0] >> 4) != h || (c[0] & 0x0F) == h) continue;
+  uint8_t i = RECORDS_OFFSET, p;
+  __xdata uint8_t* c;
+  while(i < RECORDS_END) {
+    c = cfg + i;
+    if(c[0] == REC_END) break;
+    if(c[0] >= REC_SEQ) { i += 2 + c[1]; continue; }
+    i += 4;
+    if((c[0] >> 4) != h || (c[0] & 0x0F) == h) continue;
     p = c[1] >> 5;
     if(p == prof || p == COMBO_ALL_PROFILES) return 1;
   }
   return 0;
 }
+
+// Locate sequence id: its steps are cfg[seqStart .. seqEnd), the ones before seqMark
+// run on press, the ones after it (STEP_RELEASE) when the input is let go.
+static __xdata uint8_t seqStart, seqMark, seqEnd;
+
+static __bit findSeq(uint8_t id) {
+  uint8_t i = RECORDS_OFFSET;
+  __xdata uint8_t* c;
+  while(i < RECORDS_END) {
+    c = cfg + i;
+    if(c[0] == REC_END) return 0;
+    if(c[0] < REC_SEQ) { i += 4; continue; }
+    if(c[0] == (REC_SEQ | id)) {
+      seqStart = i + 2;
+      seqEnd = seqStart + c[1];
+      for(i = seqStart; i < seqEnd; i += (cfg[i] & STEP_OP) >= STEP_WAIT ? 1 : 3)
+        if((cfg[i] & STEP_OP) == STEP_RELEASE) break;
+      seqMark = i < seqEnd ? i : seqEnd;
+      return 1;
+    }
+    i += 2 + c[1];
+  }
+  return 0;
+}
+
 
 // ===================================================================================
 // HID reports (keyboard / consumer / mouse)
@@ -133,13 +168,15 @@ static __xdata uint8_t conRep[3]   = {REPORT_ID_CONSUMER, 0, 0};
 static __xdata uint8_t mouseRep[6] = {REPORT_ID_MOUSE, 0, 0, 0, 0, 0};
 static __xdata uint8_t newKbd[9];
 static __bit kbdDirty, conDirty, mouseDirty, padDirty;
-static __bit recompose;                   // active actions changed since last compose
-static uint8_t turnMods;                  // ACT_KEY_HOLD modifiers held between knob clicks
-static __xdata int8_t wheelAcc, hwheelAcc, moveX, moveY;
 
-// Action currently held by each button, and by the knob step being replayed
-static __xdata action_t active[BOARD_BUTTONS];
-static __xdata action_t knobAct;
+// Everything that is pressed: actions held by an owner (see "Held actions"), and the
+// one the runner is tapping
+#define HELD_MAX    8
+static __xdata uint8_t  heldOwner[HELD_MAX];      // owner + 1, 0 = free slot
+static __xdata action_t held[HELD_MAX];
+static __xdata action_t tapAct;
+static __bit recompose;                   // active actions changed since last compose
+static __xdata int8_t wheelAcc, hwheelAcc, moveX, moveY;
 
 static __bit outputBusy(void) {
   return kbdDirty || conDirty || mouseDirty || padDirty;
@@ -152,21 +189,23 @@ static int8_t addSat(int8_t acc, int8_t amount) {
   return v;
 }
 
-static void addToReport(__xdata action_t* a, uint8_t* nkeys, uint16_t* con, uint8_t* mbtn) {
+static __xdata uint8_t nkeys, newMbtn, newConL, newConH;   // report being composed
+
+static void addToReport(__xdata action_t* a) {
   uint8_t i;
   switch(a->type) {
     case ACT_KEY:
       newKbd[1] |= a->p1;
       if(a->p2) {
-        for(i = 0; i < *nkeys; i++) if(newKbd[3 + i] == a->p2) return;
-        if(*nkeys < 6) newKbd[3 + (*nkeys)++] = a->p2;
+        for(i = 0; i < nkeys; i++) if(newKbd[3 + i] == a->p2) return;
+        if(nkeys < 6) newKbd[3 + nkeys++] = a->p2;
       }
       break;
     case ACT_MEDIA:
-      if(!*con) *con = a->p1 | ((uint16_t)a->p2 << 8);
+      if(!newConL && !newConH) { newConL = a->p1; newConH = a->p2; }
       break;
     case ACT_MOUSE_BTN:
-      *mbtn |= a->p1;
+      newMbtn |= a->p1;
       break;
     default:
       break;
@@ -174,24 +213,23 @@ static void addToReport(__xdata action_t* a, uint8_t* nkeys, uint16_t* con, uint
 }
 
 static void HID_compose(void) {
-  uint8_t i, nkeys = 0, mbtn = 0;
-  uint16_t con = 0;
+  uint8_t i;
   if(!recompose) return;
   recompose = 0;
+  nkeys = newMbtn = newConL = newConH = 0;
   for(i = 0; i < 9; i++) newKbd[i] = 0;
-  for(i = 0; i < BOARD_BUTTONS; i++) addToReport(&active[i], &nkeys, &con, &mbtn);
-  addToReport(&knobAct, &nkeys, &con, &mbtn);
-  newKbd[1] |= turnMods;
+  for(i = 0; i < HELD_MAX; i++) if(heldOwner[i]) addToReport(&held[i]);
+  addToReport(&tapAct);
 
   for(i = 1; i < 9; i++) {
     if(kbdRep[i] != newKbd[i]) { kbdRep[i] = newKbd[i]; kbdDirty = 1; }
   }
-  if(conRep[1] != (con & 0xFF) || conRep[2] != (con >> 8)) {
-    conRep[1] = con & 0xFF;
-    conRep[2] = con >> 8;
+  if(conRep[1] != newConL || conRep[2] != newConH) {
+    conRep[1] = newConL;
+    conRep[2] = newConH;
     conDirty = 1;
   }
-  if(mouseRep[1] != mbtn) { mouseRep[1] = mbtn; mouseDirty = 1; }
+  if(mouseRep[1] != newMbtn) { mouseRep[1] = newMbtn; mouseDirty = 1; }
 }
 
 static void HID_send(void) {
@@ -292,30 +330,22 @@ static uint8_t mul8(uint8_t a, uint8_t b) {
   return ((uint16_t)a * b + 255) >> 8;
 }
 
-// LED i = color r,g,b at level 0..255, scaled by the brightness setting
-static void LED_put(uint8_t i, uint8_t r, uint8_t g, uint8_t b, uint8_t level) {
-  __xdata uint8_t* o = rgb + i * 3;
-  level = mul8(level, cfg[S_BRIGHTNESS]);
-  o[0] = mul8(r, level);
-  o[1] = mul8(g, level);
-  o[2] = mul8(b, level);
-}
+static __xdata uint8_t colR, colG, colB;  // color of the LED being set
 
-// Color wheel 0..191 at full level
-static void LED_hue(uint8_t i, uint8_t hue) {
-  uint8_t step = (hue & 63) << 2;
+// Color wheel 0..191 into colR/G/B
+static void LED_hue(uint8_t hue) {
+  uint8_t step = (hue & 63) << 2, up = step, down = 255 - step;
   switch(hue >> 6) {
-    case 0:  LED_put(i, 255 - step, step, 0, 255); break;
-    case 1:  LED_put(i, 0, 255 - step, step, 255); break;
-    default: LED_put(i, step, 0, 255 - step, 255); break;
+    case 0:  colR = down; colG = up;   colB = 0;    break;
+    case 1:  colR = 0;    colG = down; colB = up;   break;
+    default: colR = up;   colG = 0;    colB = down; break;
   }
 }
 
 static void LED_task(void) {
-  uint8_t i, lvl, tri;
-  uint16_t side;
-  __xdata uint8_t* p = PROFILE(prof);
-  uint8_t effect = p[3];
+  uint8_t i, lvl, tri, effect, side = 0;
+  __xdata uint8_t* p;
+  __xdata uint8_t* o;
 
   if((uint16_t)(now - ledTime) < LED_TICK_MS) return;
   ledTime = now;
@@ -325,38 +355,42 @@ static void LED_task(void) {
   hueAcc += (uint16_t)cfg[S_LED_SPEED] * 40;
   if(hueAcc >= 49152u) hueAcc -= 49152u;           // 192 << 8
 
-  if(profTime && (uint16_t)(now - profTime) < PROFILE_FLASH) { // new profile: flash its color
-    for(i = 0; i < NEO_COUNT; i++) LED_put(i, p[0], p[1], p[2], 255);
+  p = PROFILE(prof);
+  effect = p[3];
+  if(profTime && (uint16_t)(now - profTime) < PROFILE_FLASH) effect = LED_SOLID;   // new profile
+  else if(!ledOn) effect = LED_OFF;
+  else if(effect == LED_STEERING) {
+    if(axisMode() && NEO_COUNT >= 3)                           // outer LEDs grow with the axis
+      side = (uint16_t)(rel < 0 ? -rel : rel) * 255 / (lastRange ? lastRange : 1);
+    else effect = LED_SOLID;
   }
-  else if(!ledOn || effect == LED_OFF) {
-    for(i = 0; i < NEO_COUNT; i++) LED_put(i, 0, 0, 0, 0);
-  }
-  else if(effect == LED_STEERING && axisMode() && NEO_COUNT >= 3) {
-    // outer LEDs grow with the axis, the middle one marks the center
-    side = (uint16_t)(rel < 0 ? -rel : rel) * 255 / (lastRange ? lastRange : 1);
-    LED_put(0, p[0], p[1], p[2], rel < 0 ? side : 0);
-    LED_put(1, p[0], p[1], p[2], rel == 0 ? 255 : 40);
-    LED_put(2, p[0], p[1], p[2], rel > 0 ? side : 0);
-#if NEO_COUNT > 3
-    for(i = 3; i < NEO_COUNT; i++) LED_put(i, p[0], p[1], p[2], 40);
-#endif
-  }
-  else {
-    for(i = 0; i < NEO_COUNT; i++) {
-      switch(effect) {
-        case LED_BREATHE: LED_put(i, p[0], p[1], p[2], tri < 16 ? 16 : tri); break;
-        case LED_RAINBOW:
-          lvl = (hueAcc >> 8) + i * 32;
-          LED_hue(i, lvl >= 192 ? lvl - 192 : lvl);
-          break;
-        case LED_PRESS:   LED_put(i, p[0], p[1], p[2], ledV[i]); break;
-        default:          LED_put(i, p[0], p[1], p[2], 255); break;   // solid / steering
-      }
+
+  for(i = 0, o = rgb; i < NEO_COUNT; i++, o += 3) {
+    colR = p[0]; colG = p[1]; colB = p[2];
+    switch(effect) {
+      case LED_OFF:     lvl = 0; break;
+      case LED_BREATHE: lvl = tri < 16 ? 16 : tri; break;
+      case LED_PRESS:   lvl = ledV[i]; break;
+      case LED_RAINBOW:
+        lvl = (hueAcc >> 8) + i * 32;
+        LED_hue(lvl >= 192 ? lvl - 192 : lvl);
+        lvl = 255;
+        break;
+      case LED_STEERING:                                       // the middle one marks the center
+        if(i == 0)      lvl = rel < 0 ? side : 0;
+        else if(i == 2) lvl = rel > 0 ? side : 0;
+        else            lvl = (i == 1 && rel == 0) ? 255 : 40;
+        break;
+      default:          lvl = 255; break;                      // solid
     }
+    lvl = mul8(lvl, cfg[S_BRIGHTNESS]);
+    o[0] = mul8(colR, lvl);
+    o[1] = mul8(colG, lvl);
+    o[2] = mul8(colB, lvl);
   }
 
   EA = 0;                                                      // WS2812 timing is strict
-  for(i = 0; i < NEO_COUNT; i++) NEO_writeColor(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+  for(i = 0, o = rgb; i < NEO_COUNT; i++, o += 3) NEO_writeColor(o[0], o[1], o[2]);
   EA = 1;
 
   for(i = 0; i < NEO_COUNT; i++) {                             // fade press highlights
@@ -367,17 +401,185 @@ static void LED_task(void) {
 }
 
 // ===================================================================================
-// Buttons
+// Held actions
+// ===================================================================================
+// Everything that stays pressed lives here, with its owner: a button (until it is let
+// go) or a knob direction (until the knob has stopped for S_TURN_HOLD).
+#define NO_OWNER    0xFE
+static __xdata action_t tmpAct;
+static __xdata uint16_t turnTime;                 // last knob click
+static __bit turnHeld;                            // knob directions hold something
+
+static void addHeld(uint8_t owner, __xdata action_t* a) {
+  uint8_t i, t = a->type == ACT_KEY_HOLD ? ACT_KEY : a->type;
+  for(i = 0; i < HELD_MAX; i++)                     // already held by this owner?
+    if(heldOwner[i] == owner + 1 && held[i].type == t && held[i].p1 == a->p1 && held[i].p2 == a->p2) return;
+  for(i = 0; i < HELD_MAX; i++) {
+    if(heldOwner[i]) continue;
+    heldOwner[i] = owner + 1;
+    copyAction(&held[i], a);
+    if(owner >= BOARD_BUTTONS) turnHeld = 1;
+    return;
+  }
+}
+
+static void releaseOwner(uint8_t owner) {
+  uint8_t i;
+  for(i = 0; i < HELD_MAX; i++) {
+    if(heldOwner[i] != owner + 1) continue;
+    if(held[i].type == ACT_PROFILE) setProfile(held[i].p1);    // "profile while held" ends
+    heldOwner[i] = 0;
+    clearAction(&held[i]);
+  }
+}
+
+static void releaseTurns(void) {
+  releaseOwner(IN_RIGHT);
+  releaseOwner(IN_LEFT);
+  turnHeld = 0;
+}
+
+// ===================================================================================
+// Buttons: state
 // ===================================================================================
 #define BS_IDLE     0                     // not pressed
 #define BS_PENDING  1                     // starts combos / has a long press: wait
-#define BS_HELD     2                     // action in active[] held until release
-#define BS_TAP      3                     // tapped action held briefly, then released
-#define BS_USED     4                     // was used for a combo: nothing on release
-#define BS_TAPKEY   5                     // ACT_KEY_HOLD: key tapped, then only modifiers held
+#define BS_HELD     2                     // its actions are held until release
+#define BS_USED     3                     // was used for a combo: nothing on release
 static __xdata uint8_t  bstate[BOARD_BUTTONS];
 static __xdata uint16_t btime[BOARD_BUTTONS];
+static __xdata uint8_t  btnSeq[BOARD_BUTTONS];    // sequence id + 1 started by the press
 
+static __bit ownerActive(uint8_t owner) {
+  if(owner < BOARD_BUTTONS) return (btn & BTN_BIT(owner)) && bstate[owner] != BS_IDLE;
+  return owner != NO_OWNER;                         // knob: until it stops
+}
+
+// ===================================================================================
+// Runner: taps, waits and sequences, one after the other
+// ===================================================================================
+#define JOB_MAX     8                     // power of two
+#define JOB_RUN     1                     // [1, first step, end, owner]
+#define JOB_TAP     2                     // [2, type, p1, p2]
+static __xdata uint8_t jobs[JOB_MAX][4];
+static __xdata uint8_t jHead, jLen;
+
+// Knob clicks are queued as [input << 4 | held button or NO_INPUT] so a combo applies
+// to the clicks made while its key was held, even if they are replayed later.
+#define STEPQ_SIZE  32
+static __xdata uint8_t stepQ[STEPQ_SIZE];
+static __xdata uint8_t qHead, qLen;
+
+static __xdata uint8_t  runPos, runEnd, runOwner;  // sequence steps being run
+static uint8_t          runPhase;                  // 0 ready, 1 tap down, 2 tap gap, 3 wait
+static __xdata uint16_t runTime, runWait;
+static __xdata uint8_t  runTapLen;                 // how long the current tap lasts
+#define PAD_TAP_MS  40                    // games read a gamepad once per frame: make
+                                          // its taps (and the gaps after them) last
+static __xdata action_t stepAct;
+
+static void addJob(uint8_t kind, uint8_t a, uint8_t b, uint8_t c) {
+  __xdata uint8_t* j;
+  if(jLen >= JOB_MAX) return;
+  j = jobs[(jHead + jLen) & (JOB_MAX - 1)];
+  j[0] = kind; j[1] = a; j[2] = b; j[3] = c;
+  jLen++;
+}
+
+// Do action a for owner (NO_OWNER: nobody holds it). hold: keep it pressed while the
+// owner is held instead of tapping it. Only called while the runner is ready.
+static void runAction(__xdata action_t* a, uint8_t owner, uint8_t hold) {
+  uint8_t t = a->type, p1 = a->p1, p2 = a->p2;
+  if(t == ACT_SEQ) {
+    if(findSeq(p1)) { runPos = seqStart; runEnd = seqMark; runOwner = owner; }
+    return;
+  }
+  if(t == ACT_KEY_HOLD) {                                      // modifiers held, key tapped
+    if(owner != NO_OWNER) {
+      tmpAct.type = ACT_KEY; tmpAct.p1 = p1 & HOLD_MODS; tmpAct.p2 = 0;
+      addHeld(owner, &tmpAct);
+    }
+    t = ACT_KEY;
+  }
+  if(!isHeldType(t)) { oneShot(a); return; }
+  if(hold && owner != NO_OWNER && ownerActive(owner)) { addHeld(owner, a); return; }
+  tapAct.type = t; tapAct.p1 = p1; tapAct.p2 = p2;
+  recompose = 1;
+  runPhase = 1;
+  runTime = now;
+  runTapLen = cfg[S_TAP_MS];
+  if(t == ACT_PAD_BTN && runTapLen < PAD_TAP_MS) runTapLen = PAD_TAP_MS;
+}
+
+static void RUN_task(void) {
+  uint8_t b, entry;
+  __xdata uint8_t* j;
+  __xdata action_t* a;
+
+  if(runPhase == 3) {                                          // waiting
+    if((uint16_t)(now - runTime) < runWait) return;
+    runPhase = 0;
+  }
+  else if(runPhase) {                                          // tap: press, then release
+    if(outputBusy() || (uint16_t)(now - runTime) < runTapLen) return;
+    if(runPhase == 1) {
+      clearAction(&tapAct);
+      runPhase = 2;
+      runTime = now;
+      return;
+    }
+    runPhase = 0;
+  }
+
+  while(!runPhase) {
+    if(runPos < runEnd) {                                      // next sequence step
+      b = cfg[runPos];
+      if((b & STEP_OP) == STEP_WAIT) {
+        runWait = (uint16_t)(b & ~STEP_OP) * 20;
+        runTime = now;
+        runPhase = 3;
+        runPos++;
+      }
+      else if((b & STEP_OP) == STEP_RELEASE) runPos = runEnd;
+      else {
+        stepAct.type = b & ~STEP_OP;
+        stepAct.p1 = cfg[runPos + 1];
+        stepAct.p2 = cfg[runPos + 2];
+        runPos += 3;
+        runAction(&stepAct, runOwner, (b & STEP_OP) == STEP_HOLD);
+      }
+    }
+    else if(jLen) {                                            // next job from the keys
+      j = jobs[jHead];
+      jHead = (jHead + 1) & (JOB_MAX - 1);
+      jLen--;
+      if(j[0] == JOB_RUN) { runPos = j[1]; runEnd = j[2]; runOwner = j[3]; }
+      else {
+        stepAct.type = j[1]; stepAct.p1 = j[2]; stepAct.p2 = j[3];
+        runAction(&stepAct, NO_OWNER, 0);
+      }
+    }
+    else if(qLen) {                                            // next knob click
+      entry = stepQ[qHead];
+      qHead = (qHead + 1) & (STEPQ_SIZE - 1);
+      qLen--;
+      a = (entry & 0x0F) == NO_INPUT ? baseAction(entry >> 4) : findCombo(entry & 0x0F, entry >> 4);
+      if(!a) continue;
+      if(turnHeld && a->type != ACT_KEY_HOLD && a->type != ACT_SEQ) releaseTurns();
+      turnTime = now;
+      runAction(a, entry >> 4, 0);
+    }
+    else {                                                     // idle
+      if(turnHeld && (uint16_t)(now - turnTime) >= (uint16_t)(cfg[S_TURN_HOLD] ? cfg[S_TURN_HOLD] : 8) * 100)
+        releaseTurns();                                        // the knob has stopped
+      return;
+    }
+  }
+}
+
+// ===================================================================================
+// Buttons
+// ===================================================================================
 // While another button is held and has a combo for input trig, return that combo
 // and mark the held button as used (so it does not fire its own action on release).
 static __xdata action_t* heldCombo(uint8_t trig) {
@@ -394,41 +596,55 @@ static __xdata action_t* heldCombo(uint8_t trig) {
   return 0;
 }
 
-// Start action a for button i; it stays active until the button is released
+// Button i pressed: start action a; what it holds stays held until the button is let go
 static void startAction(uint8_t i, __xdata action_t* a) {
   bstate[i] = BS_HELD;
-  if(a->type == ACT_PROFILE && a->p2 == PROF_WHILE_HELD && a->p1 < N_PROFILES) {
-    active[i].type = ACT_PROFILE;                              // remember where to return
-    active[i].p1 = prof;
-    setProfile(a->p1);
+  switch(a->type) {
+    case ACT_SEQ:
+      if(findSeq(a->p1)) {
+        btnSeq[i] = a->p1 + 1;
+        addJob(JOB_RUN, seqStart, seqMark, i);
+      }
+      break;
+    case ACT_KEY_HOLD:                                         // modifiers now, key tapped
+      tmpAct.type = ACT_KEY; tmpAct.p1 = a->p1 & HOLD_MODS; tmpAct.p2 = 0;
+      addHeld(i, &tmpAct);
+      addJob(JOB_TAP, ACT_KEY, a->p1, a->p2);
+      break;
+    case ACT_PROFILE:
+      if(a->p2 == PROF_WHILE_HELD && a->p1 < N_PROFILES) {    // remember where to return
+        tmpAct.type = ACT_PROFILE; tmpAct.p1 = prof; tmpAct.p2 = 0;
+        addHeld(i, &tmpAct);
+        setProfile(a->p1);
+      }
+      else oneShot(a);
+      break;
+    default:
+      if(isHeldType(a->type)) addHeld(i, a);
+      else oneShot(a);
+      break;
   }
-  else if(isHeldType(a->type)) {
-    copyAction(&active[i], a);
-    if(a->type == ACT_KEY_HOLD) {
-      bstate[i] = BS_TAPKEY;
-      btime[i] = now;
-    }
-  }
-  else oneShot(a);
 }
 
 static void releaseAction(uint8_t i) {
-  if(active[i].type == ACT_PROFILE) setProfile(active[i].p1);
-  clearAction(&active[i]);
+  releaseOwner(i);
+  if(btnSeq[i]) {                                              // steps for the release
+    if(findSeq(btnSeq[i] - 1) && seqMark < seqEnd) addJob(JOB_RUN, seqMark + 1, seqEnd, NO_OWNER);
+    btnSeq[i] = 0;
+  }
   bstate[i] = BS_IDLE;
 }
 
 // Short press of a button that had to wait: send its own action as a tap
 static void tapAction(uint8_t i, __xdata action_t* a) {
-  if(isHeldType(a->type)) {
-    copyAction(&active[i], a);
-    bstate[i] = BS_TAP;
-    btime[i] = now;
+  bstate[i] = BS_IDLE;
+  if(a->type == ACT_SEQ) {
+    if(!findSeq(a->p1)) return;
+    addJob(JOB_RUN, seqStart, seqMark, NO_OWNER);
+    if(seqMark < seqEnd) addJob(JOB_RUN, seqMark + 1, seqEnd, NO_OWNER);
   }
-  else {
-    startAction(i, a);
-    releaseAction(i);
-  }
+  else if(a->type != ACT_PROFILE || a->p2 != PROF_WHILE_HELD)
+    addJob(JOB_TAP, a->type, a->p1, a->p2);
 }
 
 static void BTN_task(void) {
@@ -465,29 +681,11 @@ static void BTN_task(void) {
         }
         break;
 
-      case BS_HELD:
-      case BS_USED:
+      default:                                                 // held / used
         if(!(btn & bit)) {
           handled &= ~bit;
           releaseAction(i);
         }
-        break;
-
-      case BS_TAPKEY:                                          // key delivered: keep the modifiers
-        if(!(btn & bit)) {
-          handled &= ~bit;
-          releaseAction(i);
-        }
-        else if(!outputBusy() && (uint16_t)(now - btime[i]) >= cfg[S_TAP_MS]) {
-          active[i].p1 &= HOLD_MODS;
-          active[i].p2 = 0;
-          recompose = 1;
-          bstate[i] = BS_HELD;
-        }
-        break;
-
-      case BS_TAP:                                             // release after delivery
-        if(!outputBusy() && (uint16_t)(now - btime[i]) >= cfg[S_TAP_MS]) releaseAction(i);
         break;
     }
   }
@@ -496,15 +694,6 @@ static void BTN_task(void) {
 // ===================================================================================
 // Knob: every click becomes a step for its action (or moves the gamepad axis)
 // ===================================================================================
-// Steps are queued as [input << 4 | held button or NO_INPUT] so a combo applies to
-// the clicks made while its key was held, even if they are replayed later.
-#define STEPQ_SIZE  32
-static __xdata uint8_t stepQ[STEPQ_SIZE];
-static __xdata uint8_t qHead, qLen;
-static __xdata uint16_t turnTime;         // last knob click with ACT_KEY_HOLD
-static __xdata uint8_t knobPhase;                // 0 idle, 1 pressed, 2 released (gap)
-static __xdata uint16_t knobTime;
-
 static void KNOB_collect(void) {
   int8_t dir;
   uint8_t trig, h, entry;
@@ -526,55 +715,12 @@ static void KNOB_collect(void) {
     if(entry == NO_INPUT && axisMode()) continue;              // the axis follows pos
     if(axisMode()) center += dir;                              // combo: axis stays put
     if(qLen < STEPQ_SIZE) {
-      stepQ[(qHead + qLen) % STEPQ_SIZE] = (trig << 4) | entry;
+      stepQ[(qHead + qLen) & (STEPQ_SIZE - 1)] = (trig << 4) | entry;
       qLen++;
     }
   }
 }
 
-static void KNOB_task(void) {
-  uint8_t entry;
-  __xdata action_t* a;
-
-  KNOB_collect();
-  if(turnMods && !qLen && !knobPhase &&                      // knob stopped: let go of them
-     (uint16_t)(now - turnTime) >= (uint16_t)(cfg[S_TURN_HOLD] ? cfg[S_TURN_HOLD] : 8) * 100) {
-    turnMods = 0;
-    recompose = 1;
-  }
-  if(knobPhase) {
-    if(outputBusy() || (uint16_t)(now - knobTime) < cfg[S_TAP_MS]) return;
-    if(knobPhase == 1) {                                       // press delivered -> release
-      clearAction(&knobAct);
-      knobPhase = 2;
-      knobTime = now;
-      return;
-    }
-    knobPhase = 0;                                             // release delivered -> next
-  }
-  while(qLen) {
-    entry = stepQ[qHead];
-    qHead = (qHead + 1) % STEPQ_SIZE;
-    qLen--;
-    a = (entry & 0x0F) == NO_INPUT ? baseAction(entry >> 4) : findCombo(entry & 0x0F, entry >> 4);
-    if(!a) continue;
-    if(a->type == ACT_KEY_HOLD) {                              // keep these held between clicks
-      turnMods = a->p1 & HOLD_MODS;
-      turnTime = now;
-    }
-    else if(turnMods) {
-      turnMods = 0;
-      recompose = 1;
-    }
-    if(isHeldType(a->type)) {                                  // press now, release later
-      copyAction(&knobAct, a);
-      knobPhase = 1;
-      knobTime = now;
-      return;
-    }
-    oneShot(a);
-  }
-}
 
 // ===================================================================================
 // Gamepad (XInput report)
@@ -608,8 +754,8 @@ static void PAD_task(void) {
 
   for(i = 0; i < XINPUT_REPORT_LEN; i++) padNew[i] = 0;
   padNew[1] = XINPUT_REPORT_LEN;
-  for(i = 0; i < BOARD_BUTTONS; i++) padButton(&active[i]);
-  padButton(&knobAct);
+  for(i = 0; i < HELD_MAX; i++) if(heldOwner[i]) padButton(&held[i]);
+  padButton(&tapAct);
 
   rel = 0;
   if(k->type == ACT_AXIS) {
@@ -624,10 +770,12 @@ static void PAD_task(void) {
       if(rel > range)  rel = range;
       if(rel < -range) rel = -range;
     }
-    if(rel != lastRel || range != lastRange) {                 // 32-bit divide is slow
+    if(rel != lastRel || range != lastRange) {                 // only on change: divides
       lastRel = rel;
       lastRange = range;
-      axisValue = (int16_t)((int32_t)rel * 32767 / range);
+      axisValue = rel * (int16_t)(32767u / range);             // 16-bit math, full lock exact
+      if(rel == range) axisValue = 32767;
+      else if(rel == -range) axisValue = -32767;
     }
     if(axis == AXIS_TRIGGERS) {
       t = (uint16_t)(rel < 0 ? -rel : rel) * 255 / range;
@@ -710,10 +858,16 @@ static void STATUS_task(void) {
 #define CHUNK_MAX       32
 
 static __xdata uint8_t stage[SETTINGS_SIZE];
+
+static __code uint8_t INFO[16] = {
+  FW_MAJOR, FW_MINOR, FW_PATCH, BOARD_ID, BOARD_BUTTONS, BOARD_KNOB_BUTTON, SETTINGS_SIZE,
+  N_PROFILES, 0 /* USB layout */, NEO_COUNT, RECORDS_END - RECORDS_OFFSET /* record bytes */,
+  PROFILES_OFFSET, PROFILE_SIZE, RECORDS_OFFSET, SETTINGS_VERSION, 0 /* active profile */
+};
 static __xdata uint8_t persona;
 
 static uint8_t wantedPersona(void) {
-  if(!SET_usesGamepad(cfg)) return USB_KEYBOARD;
+  if(!SET_padUsed) return USB_KEYBOARD;
   return (CFG_FLAGS & FLAG_XBOX360) ? USB_XBOX360 : USB_GAMEPAD;
 }
 
@@ -731,21 +885,8 @@ static void CFG_task(void) {
 
   switch(cmd) {
     case CMD_INFO:
-      out[0] = FW_MAJOR;
-      out[1] = FW_MINOR;
-      out[2] = FW_PATCH;
-      out[3] = BOARD_ID;
-      out[4] = BOARD_BUTTONS;
-      out[5] = BOARD_KNOB_BUTTON;
-      out[6] = SETTINGS_SIZE;
-      out[7] = N_PROFILES;
+      for(i = 0; i < sizeof(INFO); i++) out[i] = INFO[i];
       out[8] = persona;
-      out[9] = NEO_COUNT;
-      out[10] = N_COMBOS;
-      out[11] = PROFILES_OFFSET;
-      out[12] = PROFILE_SIZE;
-      out[13] = COMBOS_OFFSET;
-      out[14] = SETTINGS_VERSION;
       out[15] = prof;
       break;
     case CMD_READ:                                          // from live settings
@@ -887,7 +1028,8 @@ void main(void) {
     pos = INP_position() + fakePos;
 
     BTN_task();
-    KNOB_task();
+    KNOB_collect();
+    RUN_task();
     if(hasPad) PAD_task();
     HID_compose();
     HID_send();

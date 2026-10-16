@@ -66,7 +66,7 @@ void SET_defaults(__xdata uint8_t* dst) {
   uint8_t i, j;
   __xdata uint8_t* q;
   __code uint8_t* d;
-  for(i = 0; i < SETTINGS_SIZE; i++) dst[i] = i < COMBOS_OFFSET ? 0 : COMBO_EMPTY;
+  for(i = 0; i < SETTINGS_SIZE; i++) dst[i] = i < RECORDS_OFFSET ? 0 : REC_END;
   for(i = 0; i < sizeof(DEF_HEADER); i++) dst[i] = DEF_HEADER[i];
   for(i = 0; i < N_PROFILES; i++)
     for(j = 0; j < PROFILE_HEAD; j++) dst[PROFILES_OFFSET + i * PROFILE_SIZE + j] = DEF_COLORS[i][j];
@@ -76,8 +76,8 @@ void SET_defaults(__xdata uint8_t* dst) {
     q = dst + PROFILES_OFFSET + d[0] * PROFILE_SIZE + PROFILE_HEAD + 3 * d[1];
     q[0] = d[2]; q[1] = d[3]; q[2] = d[4];
   }
-  q = dst + COMBOS_OFFSET;
-  for(i = 0; i < sizeof(DEF_COMBOS) / 6 && i < N_COMBOS; i++) {
+  q = dst + RECORDS_OFFSET;
+  for(i = 0; i < sizeof(DEF_COMBOS) / 6 && q + 4 <= dst + RECORDS_END; i++) {
     d = DEF_COMBOS[i];
     if(d[3] == ACT_PROFILE && d[4] >= N_PROFILES) continue;          // no such profile
     if(d[2] != ALL && d[2] >= N_PROFILES) continue;
@@ -85,9 +85,10 @@ void SET_defaults(__xdata uint8_t* dst) {
     q[1] = (d[2] << 5) | d[3];
     q[2] = d[4];
     q[3] = d[5];
-    q += COMBO_SIZE;
+    q += 4;
   }
   dst[S_CHECKSUM] = SET_checksum(dst);
+  SET_valid(dst);                                   // notes SET_padUsed
 }
 
 uint8_t SET_checksum(__xdata uint8_t* p) {
@@ -96,8 +97,15 @@ uint8_t SET_checksum(__xdata uint8_t* p) {
   return sum;
 }
 
+__xdata uint8_t SET_padUsed;              // the last valid settings use the gamepad
+
+static uint8_t isPadType(uint8_t t) {
+  return t == ACT_PAD_BTN || t == ACT_AXIS;
+}
+
+// Check settings p; on success also note whether any action needs the gamepad
 uint8_t SET_valid(__xdata uint8_t* p) {
-  uint8_t i, j;
+  uint8_t i, j, end, pad = 0;
   __xdata uint8_t* q;
   if(p[S_MAGIC] != SETTINGS_MAGIC || p[S_VERSION] != SETTINGS_VERSION) return 0;
   if(p[S_CHECKSUM] != SET_checksum(p)) return 0;
@@ -110,38 +118,43 @@ uint8_t SET_valid(__xdata uint8_t* p) {
   for(i = 0; i < N_PROFILES; i++) {
     q = p + PROFILES_OFFSET + i * PROFILE_SIZE;
     if(q[3] > LED_LAST) return 0;
-    for(j = 0; j < N_INPUTS; j++)
-      if((q[PROFILE_HEAD + 3 * j] & ACT_TYPE_MASK) > ACT_LAST) return 0;
+    for(j = 0; j < N_INPUTS; j++) {
+      end = q[PROFILE_HEAD + 3 * j] & ACT_TYPE_MASK;
+      if(end > ACT_LAST) return 0;
+      pad |= isPadType(end);
+    }
   }
-  for(i = 0; i < N_COMBOS; i++) {
-    q = p + COMBOS_OFFSET + i * COMBO_SIZE;
-    if(q[0] == COMBO_EMPTY) continue;
-    if((q[0] >> 4) >= BOARD_BUTTONS || (q[0] & 0x0F) >= N_INPUTS) return 0;
-    if((q[1] & 0x1F) > ACT_LAST) return 0;
-    j = q[1] >> 5;
-    if(j >= N_PROFILES && j != COMBO_ALL_PROFILES) return 0;
+  i = RECORDS_OFFSET;                                // walk the record list
+  while(i < RECORDS_END && p[i] != REC_END) {
+    q = p + i;
+    if(q[0] < REC_SEQ) {                             // combo
+      if(i + 4 > RECORDS_END) return 0;
+      if((q[0] >> 4) >= BOARD_BUTTONS || (q[0] & 0x0F) >= N_INPUTS) return 0;
+      j = q[1] & 0x1F;
+      if(j > ACT_LAST) return 0;
+      pad |= isPadType(j);
+      j = q[1] >> 5;
+      if(j >= N_PROFILES && j != COMBO_ALL_PROFILES) return 0;
+      i += 4;
+    }
+    else {                                           // sequence
+      if(i + 2 > RECORDS_END || i + 2 + q[1] > RECORDS_END) return 0;
+      end = i + 2 + q[1];
+      i += 2;
+      while(i < end) {
+        j = p[i] & STEP_OP;
+        if(j == STEP_WAIT || j == STEP_RELEASE) { i++; continue; }
+        if(j > STEP_HOLD) return 0;
+        j = p[i] & ~STEP_OP;
+        if(j > ACT_LAST || j == ACT_SEQ) return 0;
+        pad |= isPadType(j);
+        i += 3;
+      }
+      if(i != end) return 0;
+    }
   }
+  SET_padUsed = pad;
   return 1;
-}
-
-static uint8_t isPadType(uint8_t t) {
-  return t == ACT_PAD_BTN || t == ACT_AXIS;
-}
-
-// True if any action needs the gamepad interface
-uint8_t SET_usesGamepad(__xdata uint8_t* p) {
-  uint8_t i, j;
-  __xdata uint8_t* q;
-  for(i = 0; i < N_PROFILES; i++) {
-    q = p + PROFILES_OFFSET + i * PROFILE_SIZE + PROFILE_HEAD;
-    for(j = 0; j < N_INPUTS; j++)
-      if(isPadType(q[3 * j] & ACT_TYPE_MASK)) return 1;
-  }
-  for(i = 0; i < N_COMBOS; i++) {
-    q = p + COMBOS_OFFSET + i * COMBO_SIZE;
-    if(q[0] != COMBO_EMPTY && isPadType(q[1] & 0x1F)) return 1;
-  }
-  return 0;
 }
 
 // Data-Flash bytes live at even addresses starting at DATA_FLASH_ADDR

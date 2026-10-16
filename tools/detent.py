@@ -7,6 +7,8 @@
   python detent.py set 1 key1 key:ctrl+c        profile 1, key 1 -> Ctrl+C
   python detent.py set 2 right axis:lx:10       profile 2, knob -> gamepad stick X
   python detent.py set 1 knob key:alt --now     own action right away (see below)
+  python detent.py set 1 key1 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
+                                                several steps (see 'actions')
   python detent.py combo add knob key1 profile:1           hold knob + key 1
   python detent.py combo add key3 right scroll:-1 --profile 2
   python detent.py combo add key1 key1 key:esc  hold key 1 alone (long press)
@@ -41,7 +43,7 @@ USAGE_PAGE = 0xFF54
 FEATURE_LEN = 40
 CHUNK = 32
 PROTOCOL = 3
-SETTINGS_VERSION = 3
+SETTINGS_VERSION = 4
 
 (CMD_INFO, CMD_READ, CMD_WRITE, CMD_COMMIT, CMD_SAVE, CMD_DEFAULTS, CMD_STATUS,
  CMD_RECENTER, CMD_REBOOT, CMD_BOOTLOADER, CMD_PROFILE) = range(1, 12)
@@ -53,11 +55,13 @@ S_MAGIC, S_VERSION, S_FLAGS, S_BRIGHTNESS, S_HOLD, S_DEBOUNCE, S_TAP, S_DETENTS,
     S_START, S_SPEED, S_TURN_HOLD = range(11)
 MAGIC = 0xA5
 FLAG_INVERT, FLAG_HALFSTEP, FLAG_XBOX360 = 0x01, 0x02, 0x04
-COMBO_EMPTY, ALL_PROFILES = 0xFF, 7
+ALL_PROFILES = 7
+REC_END, REC_SEQ = 0xFF, 0x80
+ST_TAP, ST_HOLD, ST_WAIT, ST_REL = 0x00, 0x20, 0x40, 0x60
 EFFECTS = ["off", "solid", "breathe", "rainbow", "press", "steering"]
 
 (ACT_NONE, ACT_KEY, ACT_MEDIA, ACT_MOUSE_BTN, ACT_SCROLL, ACT_MOUSE_MOVE, ACT_PAD_BTN,
- ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT, ACT_KEY_HOLD) = range(12)
+ ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT, ACT_KEY_HOLD, ACT_SEQ) = range(13)
 ACT_TYPE_MASK, ACT_NOW = 0x1F, 0x80
 PROF_NEXT, PROF_PREV = 0xF0, 0xF1
 AXES = ["lx", "ly", "rx", "ry", "triggers"]
@@ -220,7 +224,7 @@ class Layout:
         self.fw = f"{info[0]}.{info[1]}.{info[2]}"
         self.board, self.buttons, self.knob = info[3], info[4], info[5]
         self.size, self.profiles, self.usb, self.leds = info[6], info[7], info[8], info[9]
-        self.combos, self.prof_off, self.prof_size, self.combo_off = info[10:14]
+        self.rec_size, self.prof_off, self.prof_size, self.rec_off = info[10:14]
         self.version, self.current = info[14], info[15]
         self.inputs = self.buttons + 2
         names, n = [], 1
@@ -243,6 +247,7 @@ class Settings:
     def __init__(self, layout, data):
         self.L = layout
         self.b = bytearray(data)
+        self._parse_records()
 
     # profiles
     def _poff(self, p):
@@ -283,40 +288,149 @@ class Settings:
             raise ActionError(f"light effect must be one of {', '.join(EFFECTS)}")
         self.b[self._poff(p) + 3] = EFFECTS.index(name)
 
+    # records: combos and sequences, packed after the profiles
+    def _parse_records(self):
+        self.cs, self.seqs = [], {}
+        i, end, b = self.L.rec_off, self.L.size - 1, self.b
+        while i < end and b[i] != REC_END:
+            if b[i] < REC_SEQ:
+                self.cs.append((b[i] >> 4, b[i] & 0x0F, b[i + 1] >> 5, (b[i + 1] & 0x1F, b[i + 2], b[i + 3])))
+                i += 4
+                continue
+            press, release, stop = [], [], i + 2 + b[i + 1]
+            steps, j = press, i + 2
+            while j < stop:
+                op = b[j] & 0xE0
+                if op == ST_WAIT:
+                    ms = (b[j] & 0x1F) * 20
+                    if steps and steps[-1][0] == "wait":
+                        steps[-1] = ("wait", steps[-1][1] + ms)
+                    else:
+                        steps.append(("wait", ms))
+                    j += 1
+                elif op == ST_REL:
+                    steps, j = release, j + 1
+                else:
+                    steps.append(("hold" if op == ST_HOLD else "tap", (b[j] & 0x1F, b[j + 1], b[j + 2])))
+                    j += 3
+            self.seqs[b[i] & 0x7F] = (press, release)
+            i = stop
+
+    def _records(self):
+        order, out = [], []
+
+        def ref(a):
+            if a[0] != ACT_SEQ:
+                return a
+            if a[1] not in self.seqs:
+                return (ACT_NONE, 0, 0)
+            if a[1] not in order:
+                order.append(a[1])
+            return (ACT_SEQ, order.index(a[1]), 0)
+
+        for p in range(self.L.profiles):
+            for i in range(self.L.inputs):
+                a = self.action(p, i)
+                if a[0] == ACT_SEQ:
+                    o = self._poff(p) + 4 + 3 * i
+                    self.b[o:o + 3] = bytes([(self.b[o] & ACT_NOW) | ACT_SEQ, ref(a)[1], 0])
+        for h, t, pr, a in self.cs:
+            a = ref(a)
+            out += [h << 4 | t, pr << 5 | a[0], a[1], a[2]]
+        for k, sid in enumerate(order):
+            body = self._seq_bytes(self.seqs[sid])
+            out += [REC_SEQ | k, len(body)] + body
+        self.seqs = {k: self.seqs[sid] for k, sid in enumerate(order)}
+        return out
+
+    @staticmethod
+    def _seq_bytes(seq):
+        def steps(lst):
+            out = []
+            for op, x in lst:
+                if op == "wait":
+                    n = max(1, round(x / 20))
+                    while n > 0:
+                        out.append(ST_WAIT | min(31, n))
+                        n -= 31
+                else:
+                    out += [(ST_HOLD if op == "hold" else ST_TAP) | x[0], x[1], x[2]]
+            return out
+        press, release = seq
+        return steps(press) + ([ST_REL] + steps(release) if release else [])
+
+    def used_bytes(self):
+        saved = bytes(self.b), dict(self.seqs)
+        n = len(self._records())
+        self.b[:], self.seqs = saved[0], saved[1]
+        return n
+
+    # actions as text (sequences need the settings they live in)
+    def text(self, a):
+        if a[0] != ACT_SEQ:
+            return format_action(a)
+        press, release = self.seqs.get(a[1], ([], []))
+        fmt = lambda lst: [f"wait {x}" if op == "wait" else f"{op} {format_action(x)}" for op, x in lst]
+        return "seq:" + "; ".join(fmt(press) + (["on release"] + fmt(release) if release else []))
+
+    def parse(self, text):
+        t = text.strip()
+        if not t.lower().startswith("seq:"):
+            return parse_action(t)
+        press, release = [], []
+        steps = press
+        for part in t[4:].split(";"):
+            part = part.strip().lower()
+            if not part:
+                continue
+            if part == "on release":
+                steps = release
+                continue
+            op, _, arg = part.partition(" ")
+            if op == "wait":
+                ms = int(arg)
+                if not 20 <= ms <= 10000:
+                    raise ActionError("a wait must be 20..10000 ms")
+                steps.append(("wait", ms))
+            elif op == "tap" or (op == "hold" and steps is press):
+                a = parse_action(arg)
+                if a[0] == ACT_SEQ:
+                    raise ActionError("a sequence can't contain another sequence")
+                steps.append((op, a))
+            else:
+                raise ActionError(f"cannot understand step '{part}' (tap, hold, wait, on release)")
+        sid = max(self.seqs, default=-1) + 1
+        self.seqs[sid] = (press, release)
+        return (ACT_SEQ, sid, 0)
+
     # combos
     def combos(self):
-        out = []
-        for n in range(self.L.combos):
-            o = self.L.combo_off + 4 * n
-            c = self.b[o:o + 4]
-            if c[0] != COMBO_EMPTY:
-                out.append((n, c[0] >> 4, c[0] & 0x0F, c[1] >> 5, (c[1] & 0x1F, c[2], c[3])))
-        return out
+        return [(n, h, t, p, a) for n, (h, t, p, a) in enumerate(self.cs)]
 
     def add_combo(self, held, trig, prof, a):
         if held >= self.L.buttons:
             raise ActionError("the held input must be a key or the knob button")
-        for n in range(self.L.combos):
-            o = self.L.combo_off + 4 * n
-            c = self.b[o:o + 4]
-            if c[0] != COMBO_EMPTY and c[0] == (held << 4 | trig) and c[1] >> 5 == prof:
-                break                                   # replace the same combo
-        else:
-            free = [n for n in range(self.L.combos) if self.b[self.L.combo_off + 4 * n] == COMBO_EMPTY]
-            if not free:
-                raise ActionError(f"all {self.L.combos} combo slots are used")
-            o = self.L.combo_off + 4 * free[0]
-        self.b[o:o + 4] = bytes([held << 4 | trig, prof << 5 | a[0], a[1], a[2]])
+        for n, (h, t, p, _) in enumerate(self.cs):
+            if (h, t, p) == (held, trig, prof):
+                self.cs[n] = (held, trig, prof, a)          # replace the same combo
+                return
+        self.cs.append((held, trig, prof, a))
 
     def del_combo(self, n):
-        o = self.L.combo_off + 4 * n
-        self.b[o:o + 4] = bytes([COMBO_EMPTY] * 4)
+        if not 0 <= n < len(self.cs):
+            raise ActionError(f"there is no combo {n + 1}")
+        del self.cs[n]
 
     def clear_combos(self):
-        for n in range(self.L.combos):
-            self.del_combo(n)
+        self.cs = []
 
     def finalize(self):
+        rec = self._records()
+        if len(rec) > self.L.rec_size:
+            raise ActionError(f"that doesn't fit: combos and steps need {len(rec)} bytes, "
+                              f"the pad has {self.L.rec_size}")
+        self.b[self.L.rec_off:self.L.size] = bytes([REC_END] * (self.L.size - self.L.rec_off))
+        self.b[self.L.rec_off:self.L.rec_off + len(rec)] = bytes(rec)
         self.b[S_MAGIC], self.b[S_VERSION] = MAGIC, SETTINGS_VERSION
         self.b[-1] = sum(self.b[:-1]) & 0xFF
         return bytes(self.b)
@@ -336,13 +450,13 @@ class Settings:
                 "reverseKnob": bool(f & FLAG_INVERT),
                 "halfStep": bool(f & FLAG_HALFSTEP), "xbox360": bool(f & FLAG_XBOX360)},
             "profiles": [{"color": self.color(p), "light": self.effect(p),
-                          "actions": {L.names[i]: format_action(self.action(p, i))
+                          "actions": {L.names[i]: self.text(self.action(p, i))
                                       for i in range(L.inputs)},
                           "rightAway": [L.names[i] for i in range(L.buttons) if self.now(p, i)]}
                          for p in range(L.profiles)],
             "combos": [{"hold": L.names[h], "then": L.names[t],
                         "profile": "all" if p == ALL_PROFILES else p + 1,
-                        "action": format_action(a)} for _, h, t, p, a in self.combos()],
+                        "action": self.text(a)} for _, h, t, p, a in self.combos()],
         }
 
     def from_json(self, j):
@@ -370,12 +484,12 @@ class Settings:
             for name, text in prof.get("actions", {}).items():
                 if name in L.names:
                     now = None if right_away is None else name in right_away
-                    self.set_action(p, L.input_index(name), parse_action(text), now)
+                    self.set_action(p, L.input_index(name), self.parse(text), now)
         self.clear_combos()
         for c in j.get("combos", []):
             prof = ALL_PROFILES if c.get("profile", "all") == "all" else int(c["profile"]) - 1
             self.add_combo(L.input_index(c["hold"]), L.input_index(c["then"]), prof,
-                           parse_action(c["action"]))
+                           self.parse(c["action"]))
 
 
 # ----------------------------------------------------------------- device access
@@ -453,20 +567,20 @@ def print_settings(s):
         print(f"\nprofile {p + 1}     light {s.effect(p)} {s.color(p)}")
         for i in range(L.inputs):
             mark = "   (sent right away)" if i < L.buttons and s.now(p, i) else ""
-            print(f"  {L.names[i]:<10}  {format_action(s.action(p, i))}{mark}")
+            print(f"  {L.names[i]:<10}  {s.text(s.action(p, i))}{mark}")
     combos = s.combos()
-    print(f"\ncombos ({len(combos)} of {L.combos} used)")
+    print(f"\ncombos ({len(combos)}; combos and steps use {s.used_bytes()} of {L.rec_size} bytes)")
     for n, h, t, p, a in combos:
         where = "all profiles" if p == ALL_PROFILES else f"profile {p + 1}"
         what = f"hold {L.names[h]} (long press)" if h == t else f"hold {L.names[h]} + {L.names[t]}"
-        print(f"  {n + 1:>2}. {what:<28} {format_action(a):<24} {where}")
+        print(f"  {n + 1:>2}. {what:<28} {s.text(a):<24} {where}")
 
 
 def cmd_info(d):
     L = d.layout
     print(f"Detent firmware {L.fw}, board {L.board}: {L.buttons} buttons, {L.leds} LEDs")
     print(f"USB layout    {USB_LAYOUTS[L.usb] if L.usb < 3 else L.usb}")
-    print(f"profiles      {L.profiles} (now using {L.current + 1}), {L.combos} combo slots")
+    print(f"profiles      {L.profiles} (now using {L.current + 1}), {L.rec_size} bytes for combos and steps")
     print(f"inputs        {' '.join(L.names)}")
 
 
@@ -530,6 +644,11 @@ def cmd_actions():
   profile:2             switch profile; profile:next, profile:prev; profile:2:hold
                         = only while held
   light:toggle          lights on/off; light:brighter, light:dimmer
+  seq:STEP; STEP; ...   several steps in order. Steps: tap ACTION, hold ACTION (pressed
+                        until the control is let go; on a knob turn until it stops),
+                        wait MS, and 'on release' - the steps after it run when the
+                        control is let go. Example:
+                        seq:tap pad:a; wait 60; tap pad:a; hold pad:rt; on release; tap key:x
 Light effects: """ + " ".join(EFFECTS) + """
 Gamepad buttons: """ + " ".join(PAD_NAMES[1:]) + """
 Media keys: """ + " ".join(MEDIA) + """
@@ -560,7 +679,7 @@ def main(argv):
             now = True if "--now" in args else False if "--on-release" in args else None
             args = [a for a in args if a not in ("--now", "--on-release")]
             s = d.read()
-            s.set_action(parse_profile(d, args[0]), L.input_index(args[1]), parse_action(args[2]), now)
+            s.set_action(parse_profile(d, args[0]), L.input_index(args[1]), s.parse(args[2]), now)
             apply(d, s)
         elif c == "combo" and args[:1] == ["add"] and len(args) >= 4:
             prof = ALL_PROFILES
@@ -569,7 +688,7 @@ def main(argv):
                 prof = parse_profile(d, args[k + 1])
                 args = args[:k] + args[k + 2:]
             s = d.read()
-            s.add_combo(L.input_index(args[1]), L.input_index(args[2]), prof, parse_action(args[3]))
+            s.add_combo(L.input_index(args[1]), L.input_index(args[2]), prof, s.parse(args[3]))
             apply(d, s)
         elif c == "combo" and args[:1] == ["del"] and len(args) == 2:
             s = d.read()

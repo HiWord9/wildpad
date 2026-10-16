@@ -108,7 +108,7 @@ def test_gamepad():
     logs = [raw[0x13 + 6 * i:0x13 + 6 * i + 6] for i in range(n)]
     lx = [int.from_bytes(r[0:2], "little", signed=True) for r in logs]
     check(personality == 1, "gamepad: an axis action adds the gamepad (keyboard + XInput layout)")
-    trunc = lambda k: int(32767 * k / 10)          # C integer division truncates toward 0
+    trunc = lambda k: 32767 * (k > 0) - 32767 * (k < 0) if abs(k) == 10 else k * (32767 // 10)
     check(lx[1:11] == [trunc(k) for k in range(1, 11)],
           "gamepad: 10 CW clicks -> 10 % steps up to full right lock", f"{lx[1:11]}")
     check(lx[11:31] == [trunc(k) for k in range(9, -11, -1)],
@@ -141,12 +141,24 @@ def test_switch():
           f"{fmt(reps[9:])}")
 
 
+def test_sequence():
+    raw = simulate("seq", [TEST / "test_seq.c", *FIRMWARE], 0x300, 2 + 3 * 24,
+                   {"main.c": ["main=fw_main"], "settings.c": ["SET_load=SET_load_real"]})
+    log = [(chr(raw[2 + 3 * i]), raw[3 + 3 * i], raw[4 + 3 * i]) for i in range(raw[0])]
+    A, x = 0x10, 0x1B
+    expected = [("P", 0, 0), ("P", A, 0), ("P", 0, 0), ("P", A, 0), ("P", 0, 0), ("P", 0, 255),
+                ("P", 0, 0), ("K", 0, x), ("K", 0, 0)]
+    check(log == expected, "sequence: tap A, wait, tap A, hold RT while held; on release tap 'x'",
+          f"{log}")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     test_decoder()
     test_keys()
     test_gamepad()
     test_switch()
+    test_sequence()
     print(f"\n{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 

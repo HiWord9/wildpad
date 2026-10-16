@@ -6,16 +6,19 @@
 // tools/configurator.html in sync when changing it, and bump SETTINGS_VERSION.
 //
 // Inputs are numbered: buttons 0 .. BOARD_BUTTONS-1, then knob right, knob left.
-// Every profile maps each input to one action. Combos are a shared list of
-// "while input H is held, input T does action A" entries; H == T means
-// "long press of H". A combo belongs to one profile or to all of them.
+// Every profile maps each input to one action. After the profiles comes a packed
+// list of records, shared by everything that needs more room:
+//  - combos: "while input H is held, input T does action A" (H == T: long press of
+//    H), for one profile or all of them;
+//  - sequences: lists of steps (tap an action, hold it while the input is held, wait,
+//    and steps that run when the input is let go), used through ACT_SEQ.
 
 #pragma once
 #include <stdint.h>
 #include "config.h"
 
 #define SETTINGS_MAGIC      0xA5
-#define SETTINGS_VERSION    3
+#define SETTINGS_VERSION    4
 #define SETTINGS_SIZE       128
 
 #define N_INPUTS            (BOARD_BUTTONS + 2)
@@ -25,13 +28,12 @@
 #define PROFILE_HEAD        4                       // r, g, b, light effect
 #define PROFILE_SIZE        (PROFILE_HEAD + 3 * N_INPUTS)
 #define PROFILES_OFFSET     12
-#define COMBOS_OFFSET       (PROFILES_OFFSET + N_PROFILES * PROFILE_SIZE)
-#define COMBO_SIZE          4
-#define N_COMBOS            ((SETTINGS_SIZE - 1 - COMBOS_OFFSET) / COMBO_SIZE)
+#define RECORDS_OFFSET      (PROFILES_OFFSET + N_PROFILES * PROFILE_SIZE)
+#define RECORDS_END         (SETTINGS_SIZE - 1)
 
-#if PROFILES_OFFSET + 3 * PROFILE_SIZE + 8 * COMBO_SIZE <= SETTINGS_SIZE - 1
+#if PROFILES_OFFSET + 3 * PROFILE_SIZE + 32 <= SETTINGS_SIZE - 1
   #define N_PROFILES        3
-#elif PROFILES_OFFSET + 2 * PROFILE_SIZE + 6 * COMBO_SIZE <= SETTINGS_SIZE - 1
+#elif PROFILES_OFFSET + 2 * PROFILE_SIZE + 24 <= SETTINGS_SIZE - 1
   #define N_PROFILES        2
 #else
   #define N_PROFILES        1
@@ -48,8 +50,9 @@
 #define S_DETENTS           7           // clicks per turn (drawing only)
 #define S_START_PROFILE     8           // profile after power-up
 #define S_LED_SPEED         9           // 1 slow .. 10 fast
-#define S_TURN_HOLD         10          // ACT_KEY_HOLD on a knob turn: modifiers stay held this
-                                        // long after the last click, 100 ms units (0 = 800 ms)
+#define S_TURN_HOLD         10          // what a knob turn holds (ACT_KEY_HOLD modifiers, held
+                                        // sequence steps) is let go this long after the last
+                                        // click, 100 ms units (0 = 800 ms)
 #define S_CHECKSUM          (SETTINGS_SIZE - 1)
 
 // S_FLAGS
@@ -81,7 +84,8 @@
 #define ACT_KEY_HOLD        11          // like ACT_KEY, but Ctrl / Alt / Win stay held: while
                                         // the button is held, or on a knob turn until the knob
                                         // stops; the key and Shift are tapped (Alt+Tab style)
-#define ACT_LAST            ACT_KEY_HOLD
+#define ACT_SEQ             12          // p1 = sequence id
+#define ACT_LAST            ACT_SEQ
 #define HOLD_MODS           0xDD        // modifiers ACT_KEY_HOLD keeps held (all but Shift)
 #define ACT_TYPE_MASK       0x1F
 #define ACT_NOW             0x80        // button's own action: send on press even when the
@@ -124,9 +128,21 @@
 #define AXIS_MASK           0x0F
 #define AXIS_FREE           0x80        // no hard stop: turning past full lock winds up
 
-// Combo entry: [held << 4 | trigger, profile << 5 | type, p1, p2]
-#define COMBO_EMPTY         0xFF        // first byte of an unused entry
+// Records, packed one after the other from RECORDS_OFFSET:
+//  combo     [held << 4 | trigger, profile << 5 | type, p1, p2]      first byte < 0x80
+//  sequence  [REC_SEQ | id, length, steps...]                          id 0..126
+//  REC_END   end of the list (the rest is 0xFF)
+#define REC_END             0xFF
+#define REC_SEQ             0x80
 #define COMBO_ALL_PROFILES  7
+
+// Sequence steps; the first byte is op | x
+#define STEP_TAP            0x00        // x = action type, then p1, p2: press and release
+#define STEP_HOLD           0x20        // x = action type, then p1, p2: held until the input
+                                        // is let go (a knob turn: until the knob stops)
+#define STEP_WAIT           0x40        // x = 1..31: wait x * 20 ms (one byte)
+#define STEP_RELEASE        0x60        // the steps after it run when the input is let go
+#define STEP_OP             0xE0
 
 typedef struct {
   uint8_t type;
@@ -139,12 +155,12 @@ extern __xdata uint8_t cfg[SETTINGS_SIZE];
 #define CFG_FLAGS           cfg[S_FLAGS]
 #define PROFILE(p)          (cfg + PROFILES_OFFSET + (p) * PROFILE_SIZE)
 #define ACTION(p, i)        ((__xdata action_t*)(PROFILE(p) + PROFILE_HEAD + 3 * (i)))
-#define COMBO(n)            (cfg + COMBOS_OFFSET + COMBO_SIZE * (n))
+
 
 void SET_defaults(__xdata uint8_t* dst);
 void SET_load(void);
 void SET_save(void);
 uint8_t SET_checksum(__xdata uint8_t* p);
 uint8_t SET_valid(__xdata uint8_t* p);
-uint8_t SET_usesGamepad(__xdata uint8_t* p);
+extern __xdata uint8_t SET_padUsed;       // set by SET_valid() / SET_defaults()
 void SET_saveByte(uint8_t idx, uint8_t val);

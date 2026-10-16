@@ -30,11 +30,12 @@ void SET_load(void) {
   a->type = ACT_KEY_HOLD; a->p1 = 0x06; a->p2 = 0x2B;           // Alt+Shift+Tab
   // the factory combos stay: hold knob + turn = brightness in all profiles; these
   // profile-1 combos with the same controls come later in the list and must win
-  c = COMBO(5);
+  c = cfg + RECORDS_OFFSET + 5 * 4;            // after the 5 all-profiles combos
   c[0] = (BOARD_KNOB_BUTTON << 4) | IN_RIGHT; c[1] = ACT_KEY; c[2] = 0;    c[3] = 0x2B;   // Tab
-  c = COMBO(6);
+  c += 4;
   c[0] = (BOARD_KNOB_BUTTON << 4) | IN_LEFT;  c[1] = ACT_KEY; c[2] = 0x02; c[3] = 0x2B;   // Shift+Tab
   cfg[S_CHECKSUM] = SET_checksum(cfg);
+  SET_valid(cfg);
 }
 
 // ---------------- USB stubs ----------------

@@ -97,7 +97,7 @@ def main():
     BUILD.mkdir(exist_ok=True)
     bindir = fix_cc1(find_sdcc())
     sdcc = str(bindir / "sdcc")
-    cflags = ["-mmcs51", "--model-small", "--no-xinit-opt", "--opt-code-size",
+    cflags = ["-mmcs51", "--model-small", "--no-xinit-opt", "--opt-code-size", "--max-allocs-per-node", "50000",
               "--xram-size", str(XRAM_SIZE), "--xram-loc", str(XRAM_LOC),
               "--code-size", str(CODE_SIZE),
               "-I", str(ROOT / "src"), "-I", str(ROOT / "include"),
