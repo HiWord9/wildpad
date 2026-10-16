@@ -19,7 +19,7 @@
 #define BOARD_BUTTONS       4           // keys + knob switch (max MAX_BUTTONS)
 #define BOARD_KNOB_BUTTON   3           // index of the knob push switch
 #define BOARD_BOOT_BUTTON   0           // hold while plugging in -> bootloader
-#define BOARD_RESCUE_BUTTON 2           // hold while plugging in -> factory settings once
+#define BOARD_RESCUE_BUTTON 2           // hold while plugging in -> no Xbox 360 identity once
 
 #define PIN_NEO             P34         // WS2812 chain (GRB)
 #define PIN_KEY1            P11

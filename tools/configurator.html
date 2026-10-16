@@ -3,830 +3,1564 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Detent Setup</title>
+<title>Detent</title>
+<meta name="description" content="Set up a macropad running the Detent firmware: keys, knob, combos, profiles and lights.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --alu: #dfe2df; --alu-light: #f1f3f0; --panel: #fbfcfa; --ink: #1f272b; --muted: #5d676b;
-  --line: #c6cbc7; --led: #e2336b; --led-soft: #fbe3ea; --ok: #24935a; --warn: #b5660f;
-  --key: #2b3337; --key-top: #3a4449; --cap-text: #d9dfdc;
+  --bg: #e8ebee;
+  --panel: #f7f8f9;
+  --raised: #ffffff;
+  --ink: #15181c;
+  --ink-2: #555d66;
+  --ink-3: #8a929b;
+  --line: #d4d9de;
+  --line-2: #e3e7ea;
+  --body-1: #2b3036;
+  --body-2: #1c1f23;
+  --cap-1: #fbfaf7;
+  --cap-2: #e4e2dc;
+  --cap-ink: #23272b;
+  --danger: #c2372b;
+  --accent: #00aaff;
+  --accent-ink: #003a57;
+  --accent-soft: rgba(0, 170, 255, .14);
+  --radius: 10px;
+  --font: "Archivo", "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --alu: #22282b; --alu-light: #2b3236; --panel: #1b2023; --ink: #e8ece9; --muted: #a0aaad;
-    --line: #3d464a; --led: #ff4d82; --led-soft: #3a2029; --ok: #3cc47c; --warn: #e8a14a;
-    --key: #11161a; --key-top: #1c2327; color-scheme: dark;
+    --bg: #111316; --panel: #181b1f; --raised: #20242a; --ink: #e9ebee; --ink-2: #a3abb4;
+    --ink-3: #6f7882; --line: #2c3238; --line-2: #23282d; --body-1: #2a2f35; --body-2: #0c0e10;
+    --cap-1: #3a3f46; --cap-2: #2b2f35; --cap-ink: #eef0f2; color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #111316; --panel: #181b1f; --raised: #20242a; --ink: #e9ebee; --ink-2: #a3abb4;
+  --ink-3: #6f7882; --line: #2c3238; --line-2: #23282d; --body-1: #2a2f35; --body-2: #0c0e10;
+  --cap-1: #3a3f46; --cap-2: #2b2f35; --cap-ink: #eef0f2; color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--alu); color: var(--ink); font: 16px/1.5 "Golos Text", system-ui, "Segoe UI", sans-serif; }
-main { max-width: 1060px; margin: 0 auto; padding: 24px 16px 96px; }
-h1 { font-size: 1.6rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 10px; }
-h3 { font-size: .95rem; font-weight: 600; margin: 18px 0 8px; }
-p { margin: 0 0 10px; max-width: 70ch; }
-.muted { color: var(--muted); }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+  font-size: 15px; line-height: 1.45; font-variation-settings: "wdth" 100;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hidden { display: none !important; }
+.muted { color: var(--ink-2); }
+.small { font-size: 13px; }
 
-header { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.brand { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-#conn { color: var(--muted); }
-#conn b { color: var(--ink); font-weight: 600; }
-
-/* device drawing: the one bold element */
-.stage { background: var(--alu-light); border: 1px solid var(--line); border-radius: 22px; padding: 16px 16px 8px; }
-svg#pad { width: 100%; height: auto; display: block; max-height: 300px; }
-.part { cursor: pointer; }
-.part:focus { outline: none; }
-.cap { fill: var(--key-top); stroke: var(--key); stroke-width: 3; transition: fill .08s; }
-.part:focus-visible .cap, .part:focus-visible .knobring, .part.selected .cap, .part.selected .knobring { stroke: var(--led); stroke-width: 4; }
-.part.down .cap, .knob.down .knobring { fill: var(--led); }
-.caplabel { fill: var(--cap-text); font-size: 13px; font-weight: 600; pointer-events: none; }
-.capsub { fill: var(--cap-text); opacity: .7; font-size: 10px; pointer-events: none; }
-.knobring { fill: var(--key-top); stroke: var(--key); stroke-width: 3; }
-.arrow { fill: none; stroke: var(--muted); stroke-width: 5; stroke-linecap: round; }
-.part.selected .arrow { stroke: var(--led); }
-.hit { fill: transparent; }
-.ledglow { transition: fill-opacity .12s; }
-#readout { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; padding: 4px 4px 2px; }
-#posnum { font-size: 2.4rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; min-width: 3ch; }
-.bar { position: relative; flex: 1 1 240px; height: 12px; background: var(--alu); border-radius: 6px; border: 1px solid var(--line); }
-.bar i { position: absolute; top: -1px; bottom: -1px; background: var(--led); border-radius: 6px; }
-.bar::after { content: ""; position: absolute; left: 50%; top: -5px; bottom: -5px; width: 2px; background: var(--ink); opacity: .5; }
-#fnbadge { font-weight: 600; color: var(--led); }
-
-/* tabs */
-.tabs { display: flex; gap: 4px; margin: 18px 0 0; flex-wrap: wrap; }
-.tabs button { border-radius: 10px 10px 0 0; border-bottom-color: transparent; background: transparent; }
-.tabs button[aria-selected="true"] { background: var(--panel); border-color: var(--line); border-bottom-color: var(--panel); position: relative; top: 1px; }
-.tabpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 0 12px 12px 12px; padding: 18px; }
-.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-@media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
-
-button, select, input[type=number] { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; min-height: 36px; }
-button { cursor: pointer; font-weight: 500; }
-button:hover { border-color: var(--muted); }
-button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-button:disabled { opacity: .45; cursor: default; }
-:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
-.seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-.seg button[aria-pressed="true"] { background: var(--led-soft); border-color: var(--led); }
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
-label.check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; cursor: pointer; }
-label.check input { margin-top: 5px; width: 18px; height: 18px; accent-color: var(--led); flex: none; }
-input[type=range] { accent-color: var(--led); width: min(240px, 100%); }
-.val { font-variant-numeric: tabular-nums; font-weight: 600; }
-.capture { display: inline-flex; align-items: center; min-width: 210px; min-height: 40px; padding: 6px 12px; border: 2px dashed var(--line); border-radius: 10px; font-weight: 600; cursor: text; }
-.capture:focus { border-color: var(--led); border-style: solid; outline: none; background: var(--led-soft); }
-.mods { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mods label { border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; cursor: pointer; user-select: none; font-size: .92rem; }
-.mods input { accent-color: var(--led); }
-.editor { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
-.editor:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
-.editor .seg { margin: 6px 0 8px; }
-.swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
-input.hue { background: linear-gradient(90deg, #f00, #ff0 16%, #0f0 33%, #0ff 50%, #00f 66%, #f0f 83%, #f00); height: 10px; border-radius: 5px; appearance: none; -webkit-appearance: none; }
-dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; }
-dl.kv dt { color: var(--muted); }
-dl.kv dd { margin: 0; }
-
-#savebar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); }
-#savebar .inner { max-width: 1060px; margin: 0 auto; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-#dirty { color: var(--warn); font-weight: 500; }
-#msg { min-height: 1.5em; margin-top: 10px; }
-#msg.err { color: var(--led); font-weight: 600; }
-#msg.ok { color: var(--ok); font-weight: 500; }
+/* ---------------------------------------------------------------- top bar */
+.top {
+  position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+}
+.top-in {
+  max-width: 1240px; margin: 0 auto; padding: 10px 24px; display: flex; align-items: center; gap: 18px;
+}
+.mark {
+  font-size: 22px; font-weight: 750; letter-spacing: -.01em; font-variation-settings: "wdth" 125;
+  display: flex; align-items: center; gap: 10px; margin-right: 6px;
+}
+.mark i {
+  width: 18px; height: 18px; border-radius: 50%; display: inline-block;
+  background: conic-gradient(from 0deg, var(--body-1) 0 25%, var(--accent) 0 30%, var(--body-1) 0);
+  box-shadow: inset 0 0 0 3px var(--bg), 0 0 0 1.5px var(--body-1);
+}
+.tabs { display: flex; gap: 4px; }
+.tab {
+  border: 0; background: none; padding: 8px 12px; border-radius: 8px; color: var(--ink-2); font-weight: 560;
+}
+.tab:hover { color: var(--ink); background: var(--line-2); }
+.tab[aria-selected="true"] { color: var(--ink); background: var(--raised); box-shadow: 0 0 0 1px var(--line); }
 .spacer { flex: 1; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.conn { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.dot.on { background: #2fb46e; box-shadow: 0 0 0 3px rgba(47, 180, 110, .18); }
+.dot.busy { background: #e0a100; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--raised); border-radius: 8px; padding: 7px 13px;
+  font-weight: 560; display: inline-flex; align-items: center; gap: 7px; line-height: 1.2;
+}
+.btn:hover { border-color: var(--ink-3); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:hover { opacity: .9; }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn svg { width: 16px; height: 16px; flex: none; }
+.icon-btn { border: 1px solid transparent; background: none; border-radius: 8px; padding: 6px; display: inline-grid; place-items: center; color: var(--ink-2); }
+.icon-btn:hover { background: var(--line-2); color: var(--ink); }
+.icon-btn:disabled { opacity: .35; cursor: default; background: none; }
+.icon-btn svg { width: 18px; height: 18px; }
+
+.banner {
+  max-width: 1240px; margin: 14px auto 0; padding: 0 24px;
+}
+.banner > div {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: var(--radius);
+  background: var(--raised); border: 1px solid var(--line); font-size: 14px;
+}
+.banner > div > span { flex: 1; }
+
+/* ---------------------------------------------------------------- profiles */
+main { max-width: 1240px; margin: 0 auto; padding: 18px 24px 80px; }
+.profiles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.profiles-label { font-size: 13px; color: var(--ink-2); margin-right: 4px; }
+.prof {
+  border: 1px solid var(--line); background: var(--raised); border-radius: 999px; padding: 6px 14px 6px 8px;
+  display: inline-flex; align-items: center; gap: 8px; font-weight: 560;
+}
+.prof .sw { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.prof[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.prof .live { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.prof-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+select.plain, input.plain {
+  border: 1px solid var(--line); background: var(--raised); border-radius: 8px; padding: 7px 10px;
+}
+select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- layout */
+.view { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 20px; align-items: start; }
+.view.single { grid-template-columns: minmax(0, 800px); justify-content: center; }
+.col { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+.panel-h { display: flex; align-items: baseline; gap: 6px 12px; padding: 16px 18px 0; flex-wrap: wrap; }
+.panel-h .btn { white-space: nowrap; align-self: center; }
+.panel-h h2 { margin: 0; font-size: 17px; font-weight: 680; font-variation-settings: "wdth" 112; letter-spacing: -.005em; }
+.panel-b { padding: 14px 18px 18px; }
+.inspector { position: sticky; top: 76px; }
+
+/* ---------------------------------------------------------------- device stage */
+.stage {
+  position: relative; border-radius: 14px; border: 1px solid var(--line); overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 80% at 50% 40%, var(--raised), transparent 75%),
+    var(--panel);
+  padding: 40px 24px 30px; display: grid; place-items: center;
+}
+.stage-hint { position: absolute; left: 18px; top: 14px; font-size: 13px; color: var(--ink-2); }
+.device {
+  position: relative; display: flex; align-items: center; gap: 22px; padding: 30px 30px 30px 34px;
+  border-radius: 30px;
+  background: linear-gradient(170deg, var(--body-1), var(--body-2) 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.35),
+    0 1px 2px rgba(0,0,0,.25), 0 22px 40px -18px rgba(0,0,0,.55), 0 40px 70px -40px rgba(0,0,0,.4);
+}
+.keys { display: flex; gap: 16px; }
+.cap-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.glow {
+  position: absolute; left: 50%; top: 50px; width: 110px; height: 110px; transform: translate(-50%, -50%);
+  border-radius: 22px; background: var(--led, transparent); filter: blur(14px); opacity: var(--led-a, 0);
+  transition: opacity .25s, background .25s; pointer-events: none;
+}
+.cap {
+  position: relative; width: 100px; height: 100px; border-radius: 15px; border: 0; padding: 10px 8px 14px;
+  background: linear-gradient(180deg, var(--cap-1), var(--cap-2));
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.55), inset 0 -6px 0 rgba(0,0,0,.10),
+    0 2px 0 rgba(0,0,0,.35), 0 6px 10px -4px rgba(0,0,0,.6);
+  color: var(--cap-ink); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; transition: transform .07s, box-shadow .07s; text-align: center;
+}
+.cap .legend {
+  font-weight: 650; font-size: 14px; line-height: 1.15; font-variation-settings: "wdth" 88;
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.cap .legend.none { color: var(--ink-3); font-weight: 500; }
+.cap .sub { font-size: 11px; color: var(--ink-2); font-variation-settings: "wdth" 88; }
+.cap.down { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255,255,255,.4), inset 0 -3px 0 rgba(0,0,0,.1), 0 0 0 rgba(0,0,0,.3); }
+.ctl-name { font-size: 12px; color: #aab2bb; font-weight: 520; letter-spacing: .01em; }
+.sel-ring { position: absolute; inset: -7px; border-radius: 21px; border: 2px solid var(--accent); opacity: 0; pointer-events: none; transition: opacity .12s; }
+[data-selected="true"] > .sel-ring { opacity: 1; }
+.cap:hover { filter: brightness(1.02); }
+
+.knob-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-left: 10px; }
+.knob {
+  position: relative; width: 132px; height: 132px; border-radius: 50%; border: 0; padding: 0;
+  background: repeating-conic-gradient(#3b4047 0deg 2.5deg, #23272c 2.5deg 5deg);
+  box-shadow: 0 3px 0 rgba(0,0,0,.4), 0 12px 18px -8px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.06);
+  transition: transform .07s;
+}
+.knob.down { transform: scale(.975); }
+.knob-top {
+  position: absolute; inset: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6c737b, #3a3f45 45%, #24282c 100%);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -2px 4px rgba(0,0,0,.5);
+  transition: transform .12s ease-out;
+}
+.knob-top::after {
+  content: ""; position: absolute; left: 50%; top: 9px; width: 4px; height: 18px; margin-left: -2px;
+  border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent);
+}
+.knob-wrap .sel-ring { inset: -8px -8px auto -8px; height: 148px; border-radius: 50%; }
+.knob-legend { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 12px; color: #c9cfd5; min-width: 150px; }
+.knob-legend b { font-weight: 560; color: #8d959e; }
+.knob-legend span { color: #e6e9ec; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+
+.axis-meter { width: 100%; max-width: 360px; margin: 22px auto 0; }
+.axis-track { position: relative; height: 10px; border-radius: 6px; background: var(--line-2); box-shadow: inset 0 0 0 1px var(--line); }
+.axis-fill { position: absolute; top: 0; bottom: 0; left: 50%; border-radius: 6px; background: var(--accent); }
+.axis-mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink-3); }
+.axis-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+
+/* ---------------------------------------------------------------- inspector */
+.insp-title { display: flex; align-items: center; gap: 10px; }
+.insp-title h2 { font-size: 20px; }
+.pressed-tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); visibility: hidden; }
+.pressed-tag.on { visibility: visible; }
+.field { padding: 14px 0; border-top: 1px solid var(--line-2); }
+.field:first-child { border-top: 0; padding-top: 4px; }
+.field-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.field-h h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.field-h .hint { font-size: 12px; color: var(--ink-2); }
+.note { font-size: 13px; color: var(--ink-2); margin: 8px 0 0; }
+
+.act-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--raised); text-align: left;
+}
+.act-btn:hover { border-color: var(--ink-3); }
+.act-btn[aria-expanded="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.act-btn .k { font-size: 12px; color: var(--ink-2); width: 70px; flex: none; }
+.act-btn .v { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-btn .v.none { color: var(--ink-3); font-weight: 500; }
+.act-btn svg { width: 16px; height: 16px; color: var(--ink-3); flex: none; transition: transform .15s; }
+.act-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+.picker { margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 9px; background: var(--line-2); }
+.seg button {
+  flex: 1 1 auto; border: 0; background: none; padding: 6px 9px; border-radius: 7px; font-size: 13px;
+  font-weight: 560; color: var(--ink-2); white-space: nowrap;
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 0 0 1px var(--line); }
+.seg.cats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.seg.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pick-body { margin-top: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.grid.narrow { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); }
+.opt {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 6px;
+  font-size: 13px; font-weight: 560; text-align: center; line-height: 1.2;
+}
+.opt:hover { border-color: var(--ink-3); }
+.opt[aria-pressed="true"] { border-color: var(--ink); background: var(--raised); box-shadow: 0 0 0 1px var(--ink); }
+.sub-h { font-size: 12px; color: var(--ink-2); margin: 12px 0 6px; font-weight: 560; }
+.sub-h:first-child { margin-top: 0; }
+.rec {
+  width: 100%; border: 1.5px dashed var(--line); border-radius: 10px; padding: 14px; background: var(--panel);
+  font-weight: 650; font-size: 16px; text-align: center; min-height: 54px;
+}
+.rec.on { border-color: var(--accent); border-style: solid; background: var(--accent-soft); }
+.rec small { display: block; font-weight: 500; font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > select { flex: 1; min-width: 0; }
+.mods { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 11px;
+  font-size: 13px; font-weight: 560;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.stepper button { border: 0; background: none; width: 30px; height: 32px; font-size: 16px; }
+.stepper button:hover { background: var(--line-2); }
+.stepper input { width: 46px; border: 0; background: none; text-align: center; height: 32px; }
+
+/* ---------------------------------------------------------------- combos */
+.combo-list { display: flex; flex-direction: column; gap: 6px; }
+.combo {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 84px; gap: 10px; align-items: center;
+  padding: 9px 10px 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--raised); text-align: left;
+}
+.combo:hover { border-color: var(--ink-3); }
+.combo[data-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.combo .when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.kbd {
+  display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line);
+}
+.combo .then { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo .scope { font-size: 12px; color: var(--ink-2); white-space: nowrap; text-align: right; }
+.inspector .combo { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr) 76px; }
+.empty { padding: 18px; text-align: center; color: var(--ink-2); border: 1.5px dashed var(--line); border-radius: 10px; font-size: 14px; }
+
+/* ---------------------------------------------------------------- lighting & settings */
+.effects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.stage.preview .device { pointer-events: none; }
+.effect {
+  border: 1px solid var(--line); background: var(--raised); border-radius: 10px; padding: 10px; text-align: left;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.effect:hover { border-color: var(--ink-3); }
+.effect[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.effect:disabled { opacity: .45; cursor: default; }
+.effect b { font-size: 14px; font-weight: 620; }
+.effect small { font-size: 12px; color: var(--ink-2); line-height: 1.3; }
+.swatch-row { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink); }
+input[type="color"] { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--raised); }
+.slider-row { display: grid; grid-template-columns: 1fr 56px; gap: 12px; align-items: center; }
+input[type="range"] { width: 100%; accent-color: var(--ink); }
+.val { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; font-size: 14px; }
+.setting { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); gap: 18px; padding: 14px 0; border-top: 1px solid var(--line-2); align-items: center; }
+.setting:first-child { border-top: 0; padding-top: 0; }
+.setting h3 { margin: 0 0 2px; font-size: 14px; font-weight: 650; }
+.setting p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.switch { position: relative; width: 42px; height: 24px; flex: none; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 12px; background: var(--line); transition: background .15s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked + span { background: var(--ink); }
+.switch input:checked + span::after { transform: translateX(18px); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.right { justify-self: end; }
+.info-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; font-size: 14px; }
+.info-grid dt { color: var(--ink-2); }
+.info-grid dd { margin: 0; font-weight: 560; }
+
+/* ---------------------------------------------------------------- toast & overlay */
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); opacity: 0;
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+  transition: opacity .2s, transform .2s; pointer-events: none; z-index: 50; max-width: calc(100% - 32px);
+}
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { background: var(--danger); color: #fff; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+
+@media (max-width: 980px) {
+  .view { grid-template-columns: minmax(0, 1fr); }
+  .inspector { position: static; }
+}
+@media (max-width: 720px) {
+  .top-in { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
+  .tabs { order: 3; width: 100%; }
+  .tab { flex: 1; }
+  .conn .label { display: none; }
+  main, .banner { padding-left: 16px; padding-right: 16px; }
+  .stage { padding: 36px 10px 22px; }
+  .device { flex-wrap: wrap; justify-content: center; padding: 22px 18px; gap: 18px; border-radius: 24px; }
+  .keys { gap: 10px; }
+  .cap { width: 82px; height: 82px; border-radius: 13px; }
+  .cap .legend { font-size: 13px; }
+  .glow { top: 41px; width: 90px; height: 90px; }
+  .knob-wrap { margin-left: 0; flex-direction: row; gap: 16px; }
+  .knob { width: 104px; height: 104px; }
+  .knob-wrap .sel-ring { height: 120px; width: 120px; inset: -8px auto auto -8px; }
+  .setting { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .right { justify-self: start; }
+  .combo, .inspector .combo { grid-template-columns: minmax(0, 1fr) auto; }
+  .profiles-label, .prof .live { display: none; }
+  .prof { padding: 5px 12px 5px 6px; }
+  .prof-tools { margin-left: 0; width: 100%; }
+  .prof-tools select { flex: 1; min-width: 0; }
+  .swatch { width: 28px; height: 28px; }
+  .combo .then { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div class="brand"><h1>Detent</h1><span id="conn">Not connected</span></div>
-    <div class="row" style="margin:0">
-      <span class="muted" id="modelabel">Mode</span>
-      <div class="seg" id="devmode" role="group" aria-labelledby="modelabel">
-        <button data-mode="0" disabled>Keyboard</button>
-        <button data-mode="1" disabled>Wheel</button>
-      </div>
-      <button class="primary" id="connect">Connect</button>
-    </div>
-  </header>
-
-  <div class="stage">
-    <svg id="pad" viewBox="0 0 560 210" role="group" aria-label="Macropad: pick a key or the knob"></svg>
-    <div id="readout">
-      <div><div id="posnum">0</div><div class="muted">knob position, detents</div></div>
-      <div class="bar" aria-hidden="true"><i id="posbar" style="left:50%;width:0"></i></div>
-      <span id="fnbadge" class="hidden">Fn layer active</span>
-      <button id="recenter" disabled>Reset position</button>
-    </div>
+<header class="top">
+  <div class="top-in">
+    <div class="mark"><i aria-hidden="true"></i>detent</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="controls" aria-selected="true">Controls</button>
+      <button class="tab" role="tab" data-tab="lighting" aria-selected="false">Lighting</button>
+      <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
+    </nav>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
+    <button class="icon-btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+    </button>
+    <div class="conn"><span class="dot" id="dot"></span><span class="label" id="connText">Demo</span></div>
+    <button class="btn primary" id="connect">Connect</button>
   </div>
+</header>
 
-  <section id="intro" class="tabpanel" style="margin-top:18px;border-radius:12px">
-    <h2>Connect your macropad</h2>
-    <p>This page talks to the Detent firmware directly over USB. No drivers, nothing to install. Use Chrome or Edge, then click Connect.</p>
-    <p class="muted">Is the firmware installed? If the macropad still runs its stock firmware, run <code>flash.bat</code> first. A macropad in compatibility wheel mode (shows up as a plain Xbox 360 pad) can't be configured: plug it in while holding key 3 to start in keyboard mode.</p>
-    <p class="muted" id="nohid"></p>
+<div class="banner" id="banner"><div><span id="bannerText"></span><button class="btn" id="bannerBtn">Connect</button></div></div>
+
+<main>
+  <div class="profiles" id="profiles"></div>
+
+  <!-- Controls -->
+  <section class="view" id="view-controls">
+    <div class="col">
+      <div class="stage" id="stage">
+        <div class="stage-hint">Click a key or the knob to change what it does</div>
+        <div class="device" id="device"></div>
+        <div class="axis-meter hidden" id="axisMeter">
+          <div class="axis-track"><div class="axis-mid"></div><div class="axis-fill" id="axisFill"></div></div>
+          <div class="axis-row"><span>Full left</span><span id="axisText">Center</span><span>Full right</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Combos</h2><span class="muted small" id="comboCount"></span><div class="spacer"></div>
+          <button class="btn" id="addCombo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add combo</button></div>
+        <div class="panel-b">
+          <p class="muted small" style="margin:0 0 12px">Hold one control, then press or turn another, to do something else. Holding a key on its own counts too.</p>
+          <div class="combo-list" id="comboList"></div>
+        </div>
+      </div>
+    </div>
+    <aside class="panel inspector" id="inspector"></aside>
   </section>
 
-  <div id="app" class="hidden">
-    <div class="tabs" role="tablist">
-      <button role="tab" data-tab="kbd" aria-selected="true">Keyboard mode</button>
-      <button role="tab" data-tab="wheel" aria-selected="false">Wheel mode</button>
-      <button role="tab" data-tab="lights" aria-selected="false">Lights</button>
-      <button role="tab" data-tab="timing" aria-selected="false">Knob &amp; timing</button>
-      <button role="tab" data-tab="about" aria-selected="false">Device</button>
+  <!-- Lighting -->
+  <section class="view hidden" id="view-lighting">
+    <div class="col">
+      <div class="stage preview">
+        <div class="stage-hint" id="lightHint">Preview. The pad shows the same light right now.</div>
+        <div class="device" id="l-device"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>All profiles</h2></div>
+        <div class="panel-b">
+          <div class="setting"><div><h3>Brightness</h3><p>Also on the pad itself: hold the knob and turn it (factory setting).</p></div>
+            <div class="slider-row"><input type="range" id="brightness" min="8" max="255"><span class="val" id="brightnessVal"></span></div></div>
+          <div class="setting"><div><h3>Animation speed</h3><p>For breathe and rainbow.</p></div>
+            <div class="slider-row"><input type="range" id="speed" min="1" max="10"><span class="val" id="speedVal"></span></div></div>
+        </div>
+      </div>
     </div>
-
-    <section class="tabpanel" data-panel="kbd">
-      <div class="row" style="margin-top:0">
-        <div class="seg" id="layer" role="group" aria-label="Layer">
-          <button data-layer="base" aria-pressed="true">Base layer</button>
-          <button data-layer="fn" aria-pressed="false">Fn layer</button>
-        </div>
-        <span class="muted" id="layerhint">The Fn layer is active while a key set to “Fn layer” is held.</span>
+    <aside class="panel inspector">
+      <div class="panel-h"><h2 id="lightTitle">Profile 1 lights</h2></div>
+      <div class="panel-b">
+        <div class="effects" id="effects"></div>
+        <div class="sub-h" style="margin-top:18px">Color</div>
+        <div class="swatch-row" id="swatches"></div>
+        <p class="note">Every profile has its own color, so you can tell which one is active. The keys flash in the new color when you switch.</p>
       </div>
-      <h2 id="kbdtitle">Key 1</h2>
-      <div id="kbdeditors"></div>
-    </section>
+    </aside>
+  </section>
 
-    <section class="tabpanel hidden" data-panel="wheel">
-      <div class="cols">
-        <div>
-          <h2 id="wheeltitle">Key 1</h2>
-          <div id="wheeleditors"></div>
+  <!-- Settings -->
+  <section class="view single hidden" id="view-settings">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h2>Knob</h2></div>
+        <div class="panel-b">
+          <div class="setting"><div><h3>Reverse direction</h3><p>Swap turning right and left.</p></div>
+            <label class="switch right"><input type="checkbox" id="optInvert"><span></span></label></div>
+          <div class="setting"><div><h3>Clicks per full turn</h3><p>Only used to draw the knob on this page. Count the clicks in one full turn.</p></div>
+            <div class="slider-row"><input type="range" id="optDetents" min="8" max="60"><span class="val" id="optDetentsVal"></span></div></div>
+          <div class="setting"><div><h3>Half-step knob</h3><p>Turn on if every click counts twice or only every second click counts.</p></div>
+            <label class="switch right"><input type="checkbox" id="optHalf"><span></span></label></div>
         </div>
-        <div>
-          <h2>Steering</h2>
-          <div class="row"><label for="axis">Knob drives</label>
-            <select id="axis">
-              <option value="0">Left stick X (steering)</option>
-              <option value="1">Left stick Y</option>
-              <option value="2">Right stick X</option>
-              <option value="3">Right stick Y</option>
-              <option value="4">Triggers (left = LT, right = RT)</option>
-            </select>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Timing</h2></div>
+        <div class="panel-b">
+          <div class="setting"><div><h3>Hold time</h3><p>How long a key must be held for its long-press action.</p></div>
+            <div class="slider-row"><input type="range" id="optHold" min="10" max="100"><span class="val" id="optHoldVal"></span></div></div>
+          <div class="setting"><div><h3>Tap length</h3><p>How long a key press lasts when the pad taps a key for you (knob clicks, released combos). Raise it if a program misses taps.</p></div>
+            <div class="slider-row"><input type="range" id="optTap" min="1" max="50"><span class="val" id="optTapVal"></span></div></div>
+          <div class="setting"><div><h3>Debounce</h3><p>Raise it if one press is sometimes counted twice.</p></div>
+            <div class="slider-row"><input type="range" id="optDebounce" min="1" max="30"><span class="val" id="optDebounceVal"></span></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Startup and compatibility</h2></div>
+        <div class="panel-b">
+          <div class="setting"><div><h3>Profile after plugging in</h3><p>The pad starts in this profile.</p></div>
+            <select class="plain right" id="optStart"></select></div>
+          <div class="setting"><div><h3>Xbox 360 controller identity</h3><p>Only for systems that don't recognize the gamepad otherwise, such as Linux. Keys, mouse and this page stop working while it's on. To turn it off again, plug the pad in while holding key 3.</p></div>
+            <label class="switch right"><input type="checkbox" id="optXbox"><span></span></label></div>
+          <div class="confirm hidden" id="xboxConfirm">
+            <span>The pad will only work as a gamepad, and this page loses it until you plug it in holding key 3.</span>
+            <button class="btn danger" id="xboxYes">Turn on</button><button class="btn" id="xboxNo">Cancel</button>
           </div>
-          <div class="row"><label for="range">Full lock at</label>
-            <input type="range" id="range" min="1" max="50"><span><span class="val" id="rangev"></span> detents</span></div>
-          <p class="muted" id="rangehint"></p>
-          <label class="check"><input type="checkbox" id="clamp"><span>Hard stop at full lock<br><span class="muted">Turning past the limit doesn’t wind up: turning back moves the wheel back right away.</span></span></label>
-          <h3>Wheel test</h3>
-          <p class="muted" id="padstatus">In wheel mode, press any macropad key: browsers only reveal a gamepad after its first button press. Then turn the knob.</p>
-          <div class="bar" aria-hidden="true"><i id="padbar" style="left:50%;width:0"></i></div>
-          <p class="muted" id="padbtns" style="margin-top:8px"></p>
         </div>
       </div>
-    </section>
-
-    <section class="tabpanel hidden" data-panel="lights">
-      <h2>Lighting</h2>
-      <div class="seg" id="ledmode" role="group" aria-label="Lighting effect">
-        <button data-led="0">Off</button>
-        <button data-led="1">React to keys</button>
-        <button data-led="2">Solid</button>
-        <button data-led="3">Rainbow</button>
-        <button data-led="4">Breathe</button>
-      </div>
-      <div class="row" style="margin-top:16px">
-        <span class="swatch" id="swatch"></span>
-        <label for="hue">Color</label>
-        <input type="range" class="hue" id="hue" min="0" max="191">
-        <label class="check" style="margin:0"><input type="checkbox" id="white"><span>White</span></label>
-      </div>
-      <div class="row"><label for="bright">Brightness</label>
-        <input type="range" id="bright" min="0" max="255"><span class="val" id="brightv"></span></div>
-      <p class="muted">In wheel mode the LEDs show the steering position in this color: middle LED at center, the outer ones as you steer.</p>
-    </section>
-
-    <section class="tabpanel hidden" data-panel="timing">
-      <div class="cols">
-        <div>
-          <h2>Knob</h2>
-          <div class="row"><label for="detents">Detents per full turn</label>
-            <input type="number" id="detents" min="8" max="100" style="width:5.5em"></div>
-          <p class="muted">Most knobs have 20. Used for the drawing and the steering hint.</p>
-          <label class="check"><input type="checkbox" id="invert"><span>Reverse direction</span></label>
-          <label class="check"><input type="checkbox" id="halfstep"><span>Count half steps<br><span class="muted">Turn on if only every second detent registers.</span></span></label>
-          <label class="check"><input type="checkbox" id="gesture"><span>Hold the knob button 3 s and release to switch modes</span></label>
-        </div>
-        <div>
-          <h2>Timing</h2>
-          <div class="row"><label for="hold">Hold threshold</label>
-            <input type="range" id="hold" min="10" max="100"><span><span class="val" id="holdv"></span> ms</span></div>
-          <p class="muted">How long a key must be held to trigger its “when held” action.</p>
-          <div class="row"><label for="tap">Key tap length</label>
-            <input type="range" id="tap" min="1" max="30"><span><span class="val" id="tapv"></span> ms</span></div>
-          <p class="muted">Length of each key press sent per knob detent. Raise to 10–20 ms if an app misses fast turns.</p>
-          <div class="row"><label for="debounce">Debounce</label>
-            <input type="range" id="debounce" min="1" max="30"><span><span class="val" id="debouncev"></span> ms</span></div>
-          <p class="muted">Raise if a worn switch registers double presses.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="tabpanel hidden" data-panel="about">
-      <div class="cols">
-        <div>
-          <h2>Device</h2>
-          <dl class="kv" id="devinfo"></dl>
-          <label class="check"><input type="checkbox" id="legacy"><span>Compatibility wheel mode<br><span class="muted">Shows up as a plain Xbox 360 controller. Use only if your PC doesn’t pick up the normal wheel mode. Keys and this page don’t work in that mode.</span></span></label>
-        </div>
-        <div>
-          <h2>Backup</h2>
+      <div class="panel">
+        <div class="panel-h"><h2>Backup and reset</h2></div>
+        <div class="panel-b">
           <div class="row">
-            <button id="export">Export settings</button>
-            <button id="import">Import settings</button>
-            <input type="file" id="importfile" accept=".json,application/json" class="hidden">
+            <button class="btn" id="exportBtn">Save settings to a file</button>
+            <button class="btn" id="importBtn">Load settings from a file</button>
+            <input type="file" id="importFile" accept=".json,application/json" class="hidden">
+            <div class="spacer"></div>
+            <button class="btn danger" id="factoryBtn">Restore factory settings</button>
           </div>
-          <h2 style="margin-top:18px">Maintenance</h2>
-          <div class="row">
-            <button id="defaults">Restore defaults</button>
-            <button id="boot">Enter flashing mode</button>
+          <div class="confirm hidden" id="factoryConfirm">
+            <span>This replaces every profile, combo and option.</span>
+            <button class="btn danger" id="factoryYes">Restore</button><button class="btn" id="factoryNo">Cancel</button>
           </div>
-          <p class="muted">Flashing mode is only needed for firmware updates. Run flash.bat afterwards.</p>
+          <p class="note">The file works with the command-line tool too (<code>detent.py import</code>).</p>
         </div>
       </div>
-    </section>
-  </div>
-  <div id="msg" role="status"></div>
+      <div class="panel">
+        <div class="panel-h"><h2>Firmware</h2></div>
+        <div class="panel-b">
+          <dl class="info-grid" id="fwInfo"></dl>
+          <p class="note">To update, run <b>flash.bat</b> from the Detent download. It switches the pad into update mode by itself. If that ever fails, unplug the pad and plug it back in while holding key 1.</p>
+          <div class="row" style="margin-top:10px"><button class="btn" id="bootBtn" disabled>Switch to update mode now</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
-<div id="savebar" class="hidden"><div class="inner">
-  <button class="primary" id="save" disabled>Save to macropad</button>
-  <span id="dirty"></span>
-</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 "use strict";
-// ---------------------------------------------------------------- protocol constants
-const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 2;
-const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10 };
+// =============================================================================== protocol
+const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 3, SVER = 3;
+const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11 };
 const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offset or length" };
-const SSIZE = 104, MAXB = 6, SLOT_CW = 6, SLOT_CCW = 7;
-const OFF = { base: 16, fn: 40, hold: 64, wheel: 82 };
-const S = { mode: 2, flags: 3, range: 4, bright: 5, tap: 6, debounce: 7, hold: 8, detents: 9, led: 10, hue: 11, axis: 12 };
-const FLAG = { invert: 1, halfstep: 2, clamp: 4, legacy: 8, nogesture: 16 };
-const A = { NONE: 0, KEY: 1, CONSUMER: 2, MOUSE: 3, WHEEL: 4, HWHEEL: 5, PAD: 6, RECENTER: 7, FN: 8, MODE: 9 };
+const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9 };
+const FLAG = { INVERT: 1, HALF: 2, XBOX: 4 };
+const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10 };
+const PROF_NEXT = 0xF0, PROF_PREV = 0xF1, ALL = 7, EMPTY = 0xFF, AXIS_FREE = 0x80;
+const EFFECTS = [
+  ["off", "Off", "No light."],
+  ["solid", "Solid", "Steady profile color."],
+  ["breathe", "Breathe", "Slowly fades in and out."],
+  ["rainbow", "Rainbow", "Cycles through all colors."],
+  ["press", "Light on press", "Keys light up when pressed."],
+  ["steering", "Knob position", "Shows the gamepad axis; needs the knob as an axis."],
+];
+const SWATCHES = ["#00aaff", "#00e0b0", "#36d03a", "#ffe000", "#ff8c00", "#ff2a2a", "#ff3fa0", "#dc00ff", "#ffffff"];
 
-// ---------------------------------------------------------------- names
-const PAD = ["", "A", "B", "X", "Y", "LB", "RB", "LT (left trigger)", "RT (right trigger)", "Back", "Start",
-  "Left stick click", "Right stick click", "D-pad up", "D-pad down", "D-pad left", "D-pad right", "Guide"];
-const PAD_RL = { 1: "jump", 2: "boost", 3: "powerslide", 8: "throttle", 7: "brake / reverse" };
-const MEDIA = [[0xE9, "Volume up"], [0xEA, "Volume down"], [0xE2, "Mute"], [0xCD, "Play / pause"], [0xB5, "Next track"],
-  [0xB6, "Previous track"], [0xB7, "Stop"], [0x6F, "Brightness up"], [0x70, "Brightness down"],
-  [0x192, "Calculator"], [0x196, "Browser"], [0x18A, "Mail"]];
-const MOUSE = [[1, "Left button"], [2, "Right button"], [4, "Middle button"], [8, "Back"], [16, "Forward"]];
-const MODS = [[0x01, "Ctrl"], [0x02, "Shift"], [0x04, "Alt"], [0x08, "Win"], [0x10, "Right Ctrl"], [0x20, "Right Shift"], [0x40, "AltGr"], [0x80, "Right Win"]];
-const MOD_CODES = { ControlLeft: 0x01, ShiftLeft: 0x02, AltLeft: 0x04, MetaLeft: 0x08, ControlRight: 0x10, ShiftRight: 0x20, AltRight: 0x40, MetaRight: 0x80 };
-const KEYS = (() => {          // [KeyboardEvent.code, HID usage, label]
-  const k = [];
-  for (let i = 0; i < 26; i++) { const c = String.fromCharCode(65 + i); k.push(["Key" + c, 4 + i, c]); }
-  "1234567890".split("").forEach((c, i) => k.push(["Digit" + c, 30 + i, c]));
-  [["Enter", 40, "Enter"], ["Escape", 41, "Esc"], ["Backspace", 42, "Backspace"], ["Tab", 43, "Tab"], ["Space", 44, "Space"],
-   ["Minus", 45, "-"], ["Equal", 46, "="], ["BracketLeft", 47, "["], ["BracketRight", 48, "]"], ["Backslash", 49, "\\"],
-   ["Semicolon", 51, ";"], ["Quote", 52, "'"], ["Backquote", 53, "`"], ["Comma", 54, ","], ["Period", 55, "."], ["Slash", 56, "/"],
-   ["CapsLock", 57, "Caps Lock"]].forEach(x => k.push(x));
-  for (let i = 1; i <= 12; i++) k.push(["F" + i, 57 + i, "F" + i]);
-  [["PrintScreen", 70, "Print Screen"], ["ScrollLock", 71, "Scroll Lock"], ["Pause", 72, "Pause"], ["Insert", 73, "Insert"],
-   ["Home", 74, "Home"], ["PageUp", 75, "Page Up"], ["Delete", 76, "Delete"], ["End", 77, "End"], ["PageDown", 78, "Page Down"],
-   ["ArrowRight", 79, "Right arrow"], ["ArrowLeft", 80, "Left arrow"], ["ArrowDown", 81, "Down arrow"], ["ArrowUp", 82, "Up arrow"],
-   ["NumLock", 83, "Num Lock"], ["NumpadDivide", 84, "Num /"], ["NumpadMultiply", 85, "Num *"], ["NumpadSubtract", 86, "Num -"],
-   ["NumpadAdd", 87, "Num +"], ["NumpadEnter", 88, "Num Enter"]].forEach(x => k.push(x));
-  for (let i = 1; i <= 9; i++) k.push(["Numpad" + i, 88 + i, "Num " + i]);
-  k.push(["Numpad0", 98, "Num 0"], ["NumpadDecimal", 99, "Num ."], ["IntlBackslash", 100, "\\ (ISO key)"], ["ContextMenu", 101, "Menu"]);
-  for (let i = 13; i <= 24; i++) k.push(["F" + i, 91 + i, "F" + i]);
-  return k;
-})();
-const keyLabel = c => (KEYS.find(k => k[1] === c) || [0, 0, "0x" + c.toString(16)])[2];
+// =============================================================================== action catalog
+const MEDIA = [
+  [0xCD, "Play / pause", "Play/Pause", "play-pause"], [0xB5, "Next track", "Next", "next-track"],
+  [0xB6, "Previous track", "Previous", "previous-track"], [0xB7, "Stop", "Stop", "stop"],
+  [0xE9, "Volume up", "Vol +", "volume-up"], [0xEA, "Volume down", "Vol −", "volume-down"],
+  [0xE2, "Mute", "Mute", "mute"], [0xB3, "Fast forward", "Fwd", "fast-forward"], [0xB4, "Rewind", "Rewind", "rewind"],
+  [0x6F, "Screen brighter", "Screen +", "brightness-up"], [0x70, "Screen dimmer", "Screen −", "brightness-down"],
+  [0x192, "Calculator", "Calc", "calculator"], [0x18A, "Mail", "Mail", "mail"], [0x196, "Web browser", "Browser", "browser"],
+  [0x194, "File explorer", "Files", "file-explorer"], [0x183, "Media player", "Player", "media-player"],
+  [0x223, "Browser home", "Home", "browser-home"], [0x224, "Browser back", "Back", "browser-back"],
+  [0x225, "Browser forward", "Forward", "browser-forward"], [0x227, "Browser refresh", "Refresh", "browser-refresh"],
+  [0x221, "Search", "Search", "browser-search"], [0xB8, "Eject", "Eject", "eject"],
+];
+const MOUSE = [[1, "Left click", "left"], [2, "Right click", "right"], [4, "Middle click", "middle"], [8, "Back button", "back"], [16, "Forward button", "forward"]];
+const PAD = [null, ["A", "a"], ["B", "b"], ["X", "x"], ["Y", "y"], ["LB", "lb"], ["RB", "rb"], ["LT", "lt"], ["RT", "rt"],
+  ["Back", "back"], ["Start", "start"], ["Left stick press", "ls"], ["Right stick press", "rs"], ["D-pad up", "up"],
+  ["D-pad down", "down"], ["D-pad left", "left"], ["D-pad right", "right"], ["Guide", "guide"]];
+const PAD_SHORT = { 11: "LS", 12: "RS", 13: "D-pad ↑", 14: "D-pad ↓", 15: "D-pad ←", 16: "D-pad →" };
+const AXES = [["lx", "Left stick, left / right"], ["ly", "Left stick, up / down"], ["rx", "Right stick, left / right"],
+  ["ry", "Right stick, up / down"], ["triggers", "Triggers: left = LT, right = RT"]];
+const AXIS_SHORT = ["Stick X", "Stick Y", "Right stick X", "Right stick Y", "Triggers"];
+const LIGHTS = [["toggle", "Lights on / off"], ["brighter", "Brighter"], ["dimmer", "Dimmer"]];
+const MODS = [[1, "Ctrl", "ctrl"], [2, "Shift", "shift"], [4, "Alt", "alt"], [8, "Win", "win"],
+  [16, "Right Ctrl", "rctrl"], [32, "Right Shift", "rshift"], [64, "Right Alt", "ralt"], [128, "Right Win", "rwin"]];
+const MOD_CODES = { ControlLeft: 1, ShiftLeft: 2, AltLeft: 4, MetaLeft: 8, ControlRight: 16, ShiftRight: 32, AltRight: 64, MetaRight: 128, OSLeft: 8, OSRight: 128 };
 
-const TYPE_LABEL = { [A.NONE]: "Nothing", [A.KEY]: "Key", [A.CONSUMER]: "Media", [A.MOUSE]: "Mouse button", [A.WHEEL]: "Scroll",
-  [A.PAD]: "Gamepad", [A.RECENTER]: "Re-center", [A.FN]: "Fn layer", [A.MODE]: "Switch mode" };
-const TYPES_KBD = [A.NONE, A.KEY, A.CONSUMER, A.MOUSE, A.WHEEL, A.FN, A.MODE];
-const TYPES_KNOB = [A.NONE, A.KEY, A.CONSUMER, A.WHEEL];
-const TYPES_WHEEL = [A.NONE, A.PAD, A.RECENTER, A.KEY, A.CONSUMER, A.MOUSE, A.MODE];
+// keyboard keys: usage -> {label, name (file format), code (KeyboardEvent.code), group}
+const KEYS = new Map();
+function addKey(u, label, name, code, group) { KEYS.set(u, { u, label, name, code, group }); }
+"abcdefghijklmnopqrstuvwxyz".split("").forEach((c, i) => addKey(4 + i, c.toUpperCase(), c, "Key" + c.toUpperCase(), "Letters"));
+"1234567890".split("").forEach((c, i) => addKey(0x1E + i, c, c, "Digit" + c, "Numbers"));
+[[0x28, "Enter", "enter", "Enter"], [0x29, "Esc", "esc", "Escape"], [0x2A, "Backspace", "backspace", "Backspace"],
+ [0x2B, "Tab", "tab", "Tab"], [0x2C, "Space", "space", "Space"], [0x39, "Caps Lock", "capslock", "CapsLock"],
+ [0x65, "Menu", "menu", "ContextMenu"]].forEach(k => addKey(...k, "Editing"));
+for (let i = 1; i <= 24; i++) addKey(i <= 12 ? 0x39 + i : 0x68 + i - 13, "F" + i, "f" + i, "F" + i, "Function keys");
+[[0x4F, "→", "right", "ArrowRight"], [0x50, "←", "left", "ArrowLeft"], [0x51, "↓", "down", "ArrowDown"], [0x52, "↑", "up", "ArrowUp"],
+ [0x4A, "Home", "home", "Home"], [0x4D, "End", "end", "End"], [0x4B, "Page Up", "pageup", "PageUp"], [0x4E, "Page Down", "pagedown", "PageDown"],
+ [0x49, "Insert", "insert", "Insert"], [0x4C, "Delete", "delete", "Delete"]].forEach(k => addKey(...k, "Navigation"));
+[[0x2D, "-", "minus", "Minus"], [0x2E, "=", "equal", "Equal"], [0x2F, "[", "lbracket", "BracketLeft"], [0x30, "]", "rbracket", "BracketRight"],
+ [0x31, "\\", "backslash", "Backslash"], [0x33, ";", "semicolon", "Semicolon"], [0x34, "'", "quote", "Quote"], [0x35, "`", "grave", "Backquote"],
+ [0x36, ",", "comma", "Comma"], [0x37, ".", "period", "Period"], [0x38, "/", "slash", "Slash"], [0x64, "\\ (ISO)", "iso-backslash", "IntlBackslash"]
+].forEach(k => addKey(...k, "Symbols"));
+[[0x46, "Print Screen", "printscreen", "PrintScreen"], [0x47, "Scroll Lock", "scrolllock", "ScrollLock"], [0x48, "Pause", "pause", "Pause"],
+ [0x53, "Num Lock", "numlock", "NumLock"]].forEach(k => addKey(...k, "System"));
+for (let i = 1; i <= 9; i++) addKey(0x58 + i, "Num " + i, "kp" + i, "Numpad" + i, "Numpad");
+[[0x62, "Num 0", "kp0", "Numpad0"], [0x54, "Num /", "kp-slash", "NumpadDivide"], [0x55, "Num *", "kp-star", "NumpadMultiply"],
+ [0x56, "Num −", "kp-minus", "NumpadSubtract"], [0x57, "Num +", "kp-plus", "NumpadAdd"], [0x58, "Num Enter", "kp-enter", "NumpadEnter"],
+ [0x63, "Num .", "kp-period", "NumpadDecimal"]].forEach(k => addKey(...k, "Numpad"));
+const KEY_BY_CODE = new Map([...KEYS.values()].map(k => [k.code, k]));
+const KEY_BY_NAME = new Map([...KEYS.values()].map(k => [k.name, k]));
 
-// ---------------------------------------------------------------- state
-let dev = null, seq = 0, info = null, cfg = null, dirty = false, busy = Promise.resolve();
-let selected = 0, layer = "base", tab = "kbd", live = { pos: 0, btn: 0, fn: 0 }, ledFlash = [0, 0, 0];
+const s8 = b => b > 127 ? b - 256 : b;
+const u8 = v => (Math.max(-127, Math.min(127, v | 0)) + 256) & 255;
+
+function keyText(mods, code, short) {
+  const parts = MODS.filter(m => mods & m[0]).map(m => short ? m[1].replace("Right ", "R") : m[1]);
+  if (code) parts.push(KEYS.get(code)?.label ?? `Key 0x${code.toString(16)}`);
+  return parts.join(short ? "+" : " + ");
+}
+
+// Short label (keycaps) and long label (inspector) for an action
+function describe(a, short) {
+  switch (a.t) {
+    case T.NONE: return short ? "—" : "Nothing";
+    case T.KEY: return keyText(a.p1, a.p2, short) || (short ? "—" : "Nothing");
+    case T.MEDIA: { const u = a.p1 | a.p2 << 8; const m = MEDIA.find(x => x[0] === u); return m ? m[short ? 2 : 1] : `Media 0x${u.toString(16)}`; }
+    case T.MOUSE: { const m = MOUSE.find(x => x[0] === a.p1); return m ? m[1] : "Mouse button"; }
+    case T.SCROLL: {
+      const v = s8(a.p1), h = s8(a.p2), out = [];
+      if (v) out.push(`${short ? "Scroll" : "Scroll"} ${v > 0 ? "up" : "down"}${Math.abs(v) > 1 ? " ×" + Math.abs(v) : ""}`);
+      if (h) out.push(`${out.length ? "" : "Scroll "}${h > 0 ? "right" : "left"}${Math.abs(h) > 1 ? " ×" + Math.abs(h) : ""}`);
+      return out.join(", ") || "Scroll";
+    }
+    case T.MOVE: return `Move pointer ${s8(a.p1)}, ${s8(a.p2)}`;
+    case T.PAD: return a.p1 < PAD.length && PAD[a.p1] ? (short ? (PAD_SHORT[a.p1] || PAD[a.p1][0]) : "Gamepad " + PAD[a.p1][0]) : "Gamepad";
+    case T.AXIS: return short ? AXIS_SHORT[a.p1 & 15] || "Axis" : `Gamepad axis: ${AXES[a.p1 & 15]?.[1] ?? "?"}`;
+    case T.CENTER: return short ? "Center" : "Center the knob axis";
+    case T.PROFILE: {
+      const name = a.p1 === PROF_NEXT ? "Next profile" : a.p1 === PROF_PREV ? "Previous profile" : `Profile ${a.p1 + 1}`;
+      return a.p2 === 1 ? name + (short ? " (hold)" : " while held") : name;
+    }
+    case T.LIGHT: return LIGHTS[a.p1]?.[1] ?? "Lights";
+  }
+  return "Unknown";
+}
+
+// File format action text, identical to tools/detent.py
+function actionToText(a) {
+  switch (a.t) {
+    case T.NONE: return "none";
+    case T.KEY: { const parts = MODS.filter(m => a.p1 & m[0]).map(m => m[2]); if (a.p2) parts.push(KEYS.get(a.p2)?.name ?? "0x" + a.p2.toString(16).padStart(2, "0")); return "key:" + parts.join("+"); }
+    case T.MEDIA: { const u = a.p1 | a.p2 << 8; const m = MEDIA.find(x => x[0] === u); return "media:" + (m ? m[3] : "0x" + u.toString(16).padStart(3, "0")); }
+    case T.MOUSE: return "mouse:" + (MOUSE.find(x => x[0] === a.p1)?.[2] ?? a.p1);
+    case T.SCROLL: return `scroll:${s8(a.p1)}` + (a.p2 ? `,${s8(a.p2)}` : "");
+    case T.MOVE: return `move:${s8(a.p1)},${s8(a.p2)}`;
+    case T.PAD: return "pad:" + (PAD[a.p1]?.[1] ?? a.p1);
+    case T.AXIS: return `axis:${AXES[a.p1 & 15]?.[0] ?? "lx"}:${a.p2}` + (a.p1 & AXIS_FREE ? ":free" : "");
+    case T.CENTER: return "center";
+    case T.PROFILE: return "profile:" + (a.p1 === PROF_NEXT ? "next" : a.p1 === PROF_PREV ? "prev" : a.p1 + 1) + (a.p2 === 1 ? ":hold" : "");
+    case T.LIGHT: return "light:" + (LIGHTS[a.p1]?.[0] ?? a.p1);
+  }
+  return "none";
+}
+
+function textToAction(text) {
+  const t = String(text).trim().toLowerCase();
+  const i = t.indexOf(":"), kind = i < 0 ? t : t.slice(0, i), arg = i < 0 ? "" : t.slice(i + 1);
+  const bad = () => { throw new Error(`cannot understand action "${text}"`); };
+  switch (kind) {
+    case "": case "none": return A(T.NONE);
+    case "key": {
+      let mods = 0, code = 0;
+      for (const part of arg.split("+")) {
+        const m = MODS.find(x => x[2] === part);
+        if (m) mods |= m[0];
+        else if (KEY_BY_NAME.has(part)) code = KEY_BY_NAME.get(part).u;
+        else if (/^0x[0-9a-f]{1,2}$/.test(part)) code = parseInt(part, 16);
+        else bad();
+      }
+      return A(T.KEY, mods, code);
+    }
+    case "media": { const m = MEDIA.find(x => x[3] === arg); const u = m ? m[0] : parseInt(arg); if (isNaN(u)) bad(); return A(T.MEDIA, u & 255, u >> 8); }
+    case "mouse": { const m = MOUSE.find(x => x[2] === arg); if (!m) bad(); return A(T.MOUSE, m[0]); }
+    case "scroll": { const [v, h] = arg.split(","); return A(T.SCROLL, u8(+v || 0), u8(+h || 0)); }
+    case "move": { const [x, y] = arg.split(","); return A(T.MOVE, u8(+x || 0), u8(+y || 0)); }
+    case "pad": { const n = PAD.findIndex(x => x && x[1] === arg); if (n < 1) bad(); return A(T.PAD, n); }
+    case "axis": { const p = arg.split(":"); const ax = AXES.findIndex(x => x[0] === p[0]); if (ax < 0) bad(); return A(T.AXIS, ax | (p.includes("free") ? AXIS_FREE : 0), Math.max(1, Math.min(100, +p[1] || 10))); }
+    case "center": return A(T.CENTER);
+    case "profile": { const [target, mode] = arg.split(":"); const p = target === "next" ? PROF_NEXT : target === "prev" ? PROF_PREV : (+target - 1); if (isNaN(p)) bad(); return A(T.PROFILE, p, mode === "hold" ? 1 : 0); }
+    case "light": { const n = LIGHTS.findIndex(x => x[0] === arg); if (n < 0) bad(); return A(T.LIGHT, n); }
+  }
+  bad();
+}
+
+function A(t, p1 = 0, p2 = 0) { return { t, p1, p2 }; }
+const sameAction = (a, b) => a.t === b.t && a.p1 === b.p1 && a.p2 === b.p2;
+const heldType = t => t === T.KEY || t === T.MEDIA || t === T.MOUSE || t === T.PAD;
+
+// =============================================================================== settings model
+// Layout comes from the INFO command, so boards with more keys work unchanged.
+const DEMO_INFO = [1, 0, 0, 1, 4, 3, 128, 3, 0, 3, 12, 12, 22, 78, 3, 0];
+
+class Layout {
+  constructor(r) {
+    this.fw = `${r[0]}.${r[1]}.${r[2]}`; this.board = r[3]; this.buttons = r[4]; this.knob = r[5];
+    this.size = r[6]; this.profiles = r[7]; this.usb = r[8]; this.leds = r[9]; this.combos = r[10];
+    this.profOff = r[11]; this.profSize = r[12]; this.comboOff = r[13]; this.version = r[14]; this.current = r[15];
+    this.inputs = this.buttons + 2; this.right = this.buttons; this.left = this.buttons + 1;
+    this.keys = []; let n = 1;
+    for (let i = 0; i < this.buttons; i++) if (i !== this.knob) this.keys.push({ i, n: n++ });
+  }
+  name(i) {
+    if (i === this.right) return "Turn right";
+    if (i === this.left) return "Turn left";
+    if (i === this.knob) return "Knob";
+    return "Key " + this.keys.find(k => k.i === i).n;
+  }
+  fileName(i) {
+    if (i === this.right) return "right";
+    if (i === this.left) return "left";
+    if (i === this.knob) return "knob";
+    return "key" + this.keys.find(k => k.i === i).n;
+  }
+  fromFileName(s) {
+    for (let i = 0; i < this.inputs; i++) if (this.fileName(i) === s) return i;
+    throw new Error(`unknown input "${s}"`);
+  }
+}
+
+class Model {
+  constructor(L, bytes) { this.L = L; this.b = new Uint8Array(bytes); }
+  clone() { return new Model(this.L, this.b); }
+  po(p) { return this.L.profOff + p * this.L.profSize; }
+  action(p, i) { const o = this.po(p) + 4 + 3 * i; return A(this.b[o], this.b[o + 1], this.b[o + 2]); }
+  setAction(p, i, a) { const o = this.po(p) + 4 + 3 * i; this.b[o] = a.t; this.b[o + 1] = a.p1; this.b[o + 2] = a.p2; }
+  color(p) { const o = this.po(p); return "#" + [0, 1, 2].map(k => this.b[o + k].toString(16).padStart(2, "0")).join(""); }
+  setColor(p, hex) { const o = this.po(p); for (let k = 0; k < 3; k++) this.b[o + k] = parseInt(hex.substr(1 + 2 * k, 2), 16); }
+  effect(p) { return Math.min(this.b[this.po(p) + 3], EFFECTS.length - 1); }
+  setEffect(p, e) { this.b[this.po(p) + 3] = e; }
+  combos() {
+    const out = [];
+    for (let n = 0; n < this.L.combos; n++) {
+      const o = this.L.comboOff + 4 * n, c = this.b.subarray(o, o + 4);
+      if (c[0] !== EMPTY) out.push({ slot: n, held: c[0] >> 4, trig: c[0] & 15, prof: c[1] >> 5, a: A(c[1] & 31, c[2], c[3]) });
+    }
+    return out;
+  }
+  setCombo(slot, c) { const o = this.L.comboOff + 4 * slot; this.b.set([c.held << 4 | c.trig, c.prof << 5 | c.a.t, c.a.p1, c.a.p2], o); }
+  delCombo(slot) { this.b.fill(EMPTY, this.L.comboOff + 4 * slot, this.L.comboOff + 4 * slot + 4); }
+  freeSlot() { for (let n = 0; n < this.L.combos; n++) if (this.b[this.L.comboOff + 4 * n] === EMPTY) return n; return -1; }
+  findCombo(held, trig, p) { return this.combos().find(c => c.held === held && c.trig === trig && (c.prof === p || c.prof === ALL)); }
+  startsCombos(h, p) { return this.combos().some(c => c.held === h && c.trig !== h && (c.prof === p || c.prof === ALL)); }
+  usesGamepad() {
+    for (let p = 0; p < this.L.profiles; p++) for (let i = 0; i < this.L.inputs; i++) { const t = this.action(p, i).t; if (t === T.PAD || t === T.AXIS) return true; }
+    return this.combos().some(c => c.a.t === T.PAD || c.a.t === T.AXIS);
+  }
+  bytes() {
+    const b = new Uint8Array(this.b); b[0] = 0xA5; b[1] = SVER;
+    let x = 0; for (let i = 0; i < b.length - 1; i++) x = (x + b[i]) & 255; b[b.length - 1] = x; return b;
+  }
+  toJSON() {
+    const L = this.L, b = this.b, f = b[S.FLAGS];
+    const names = Array.from({ length: L.inputs }, (_, i) => L.fileName(i));
+    return {
+      format: "detent-settings", version: SVER, board: { inputs: names },
+      options: { brightness: b[S.BRIGHT], holdMs: b[S.HOLD] * 10, debounceMs: b[S.DEBOUNCE], tapMs: b[S.TAP],
+        clicksPerTurn: b[S.DETENTS], startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED],
+        reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF), xbox360: !!(f & FLAG.XBOX) },
+      profiles: Array.from({ length: L.profiles }, (_, p) => ({ color: this.color(p), light: EFFECTS[this.effect(p)][0],
+        actions: Object.fromEntries(names.map((n, i) => [n, actionToText(this.action(p, i))])) })),
+      combos: this.combos().map(c => ({ hold: L.fileName(c.held), then: L.fileName(c.trig),
+        profile: c.prof === ALL ? "all" : c.prof + 1, action: actionToText(c.a) })),
+    };
+  }
+  fromJSON(j) {
+    if (j.format !== "detent-settings") throw new Error("this is not a Detent settings file");
+    const L = this.L, b = this.b, o = j.options || {}, clamp = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : d));
+    b[S.BRIGHT] = clamp(o.brightness, 0, 255, b[S.BRIGHT]);
+    b[S.HOLD] = clamp(Math.round((o.holdMs ?? b[S.HOLD] * 10) / 10), 10, 100, 30);
+    b[S.DEBOUNCE] = clamp(o.debounceMs, 1, 30, b[S.DEBOUNCE]);
+    b[S.TAP] = clamp(o.tapMs, 1, 50, b[S.TAP]);
+    b[S.DETENTS] = clamp(o.clicksPerTurn, 4, 100, b[S.DETENTS]);
+    b[S.START] = clamp((o.startProfile ?? 1) - 1, 0, L.profiles - 1, 0);
+    b[S.SPEED] = clamp(o.lightSpeed, 1, 10, b[S.SPEED]);
+    b[S.FLAGS] = (o.reverseKnob ? FLAG.INVERT : 0) | (o.halfStep ? FLAG.HALF : 0) | (o.xbox360 ? FLAG.XBOX : 0);
+    (j.profiles || []).slice(0, L.profiles).forEach((pr, p) => {
+      if (/^#[0-9a-f]{6}$/i.test(pr.color || "")) this.setColor(p, pr.color.toLowerCase());
+      const e = EFFECTS.findIndex(x => x[0] === pr.light); if (e >= 0) this.setEffect(p, e);
+      for (const [name, text] of Object.entries(pr.actions || {})) {
+        let i; try { i = L.fromFileName(name); } catch { continue; }
+        this.setAction(p, i, textToAction(text));
+      }
+    });
+    for (let n = 0; n < L.combos; n++) this.delCombo(n);
+    let slot = 0;
+    for (const c of j.combos || []) {
+      if (slot >= L.combos) break;
+      let held, trig; try { held = L.fromFileName(c.hold); trig = L.fromFileName(c.then); } catch { continue; }
+      if (held >= L.buttons) continue;
+      this.setCombo(slot++, { held, trig, prof: c.profile === "all" ? ALL : clamp(c.profile - 1, 0, L.profiles - 1, 0), a: textToAction(c.action) });
+    }
+  }
+}
+
+// Factory settings, same as SET_defaults() in firmware/src/settings.c
+function factory(L) {
+  const m = new Model(L, new Uint8Array(L.size));
+  m.b.fill(EMPTY, L.comboOff, L.size);
+  m.b.set([0xA5, SVER, 0, 128, 30, 5, 4, 20, 0, 5], 0);
+  applyPreset(m, 0, "media"); applyPreset(m, 1, "editing"); applyPreset(m, 2, "mouse");
+  const K = L.knob;
+  let slot = 0;
+  L.keys.slice(0, 3).forEach((k, n) => { if (n < L.profiles) m.setCombo(slot++, { held: K, trig: k.i, prof: ALL, a: A(T.PROFILE, n, 0) }); });
+  m.setCombo(slot++, { held: K, trig: L.right, prof: ALL, a: A(T.LIGHT, 1) });
+  m.setCombo(slot++, { held: K, trig: L.left, prof: ALL, a: A(T.LIGHT, 2) });
+  return m;
+}
+
+const PRESETS = [
+  ["media", "Media controls"], ["editing", "Copy, paste and scroll"], ["mouse", "Mouse buttons"],
+  ["gamepad", "Gamepad with knob axis"], ["empty", "Empty"],
+];
+function applyPreset(m, p, which) {
+  const L = m.L, k = L.keys.map(x => x.i), set = (i, a) => { if (i !== undefined) m.setAction(p, i, a); };
+  const colors = { media: "#00aaff", editing: "#ff8c00", mouse: "#dc00ff", gamepad: "#36d03a", empty: m.color(p) };
+  for (let i = 0; i < L.inputs; i++) m.setAction(p, i, A(T.NONE));
+  m.setColor(p, colors[which]); m.setEffect(p, 1);
+  if (which === "media") {
+    set(k[0], A(T.MEDIA, 0xB6)); set(k[1], A(T.MEDIA, 0xCD)); set(k[2], A(T.MEDIA, 0xB5));
+    set(L.knob, A(T.MEDIA, 0xE2)); set(L.right, A(T.MEDIA, 0xE9)); set(L.left, A(T.MEDIA, 0xEA));
+  } else if (which === "editing") {
+    set(k[0], A(T.KEY, 1, 0x06)); set(k[1], A(T.KEY, 1, 0x19)); set(k[2], A(T.KEY, 1, 0x1D));
+    set(L.knob, A(T.KEY, 0, 0x28)); set(L.right, A(T.SCROLL, 0xFF, 0)); set(L.left, A(T.SCROLL, 1, 0));
+  } else if (which === "mouse") {
+    set(k[0], A(T.MOUSE, 1)); set(k[1], A(T.MOUSE, 4)); set(k[2], A(T.MOUSE, 2));
+    set(L.knob, A(T.MOUSE, 8)); set(L.right, A(T.SCROLL, 0, 1)); set(L.left, A(T.SCROLL, 0, 0xFF));
+  } else if (which === "gamepad") {
+    set(k[0], A(T.PAD, 1)); set(k[1], A(T.PAD, 2)); set(k[2], A(T.PAD, 3));
+    set(L.knob, A(T.CENTER)); set(L.right, A(T.AXIS, 0, 10)); m.setEffect(p, 5);
+  }
+}
+
+// =============================================================================== state
 const $ = id => document.getElementById(id);
+let L = new Layout(DEMO_INFO);
+let model = factory(L);
+let dev = null;                     // HIDDevice when connected
+let prof = 0;                       // profile shown (and active on the device)
+let sel = { kind: "input", i: L.keys[0].i };   // selection: {kind:"input", i} or {kind:"combo", slot}
+let openPicker = null;              // id of the expanded action picker
+let live = { pos: 0, btn: 0, prof: 0, flags: 0 };
+let undoStack = [], redoStack = [], lastUndoKey = null, lastUndoTime = 0;
+let tab = "controls";
+
+// =============================================================================== transport
+let busyChain = Promise.resolve(), seq = 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const say = (t, k = "") => { const m = $("msg"); m.textContent = t; m.className = k; };
-const nButtons = () => info ? info.buttons : 4;
-const knobButton = () => info ? info.knobButton : 3;
-const inputName = i => i === SLOT_CW ? "Knob turned right" : i === SLOT_CCW ? "Knob turned left"
-  : i === knobButton() ? "Knob press" : `Key ${i < knobButton() ? i + 1 : i}`;
+function serial(fn) { const p = busyChain.then(fn, fn); busyChain = p.catch(() => {}); return p; }
 
-// ---------------------------------------------------------------- transport
-function serial(fn) { const p = busy.then(fn, fn); busy = p.catch(() => {}); return p; }
-
-function command(c, payload = [], wait = true) {
+function command(c, off = 0, data = [], wait = true) {
   return serial(async () => {
-    seq = seq % 250 + 1;
+    if (!dev) throw new Error("not connected");
+    seq = seq % 120 + 1;
     const buf = new Uint8Array(FLEN);
-    buf[0] = c; buf[1] = seq; buf.set(payload, 2);
+    buf.set([c, seq, off, data.length]); buf.set(data, 4);
     await dev.sendFeatureReport(0, buf);
     if (!wait) return null;
-    for (let i = 0; i < 60; i++) {
-      await sleep(4);
+    for (let i = 0; i < 80; i++) {
       const dv = await dev.receiveFeatureReport(0);
       let b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
       if (b.length === FLEN + 1) b = b.subarray(1);
       if (b[0] === c && b[1] === seq) {
-        if (b[2]) throw new Error("the macropad refused: " + (STATUS_TEXT[b[2]] || b[2]));
-        if (b[3] !== PROTO) throw new Error(`the firmware speaks protocol ${b[3]}; update it with flash.bat`);
+        if (b[3] !== PROTO) throw new Error(`the pad runs older firmware (protocol ${b[3]}). Update it with flash.bat`);
+        if (b[2]) throw new Error("the pad refused: " + (STATUS_TEXT[b[2]] || b[2]));
         return b.slice(4);
       }
+      await sleep(3);
     }
-    throw new Error("no answer from the macropad");
+    throw new Error("no answer from the pad");
   });
 }
 
-async function readSettings() {
-  const out = new Uint8Array(SSIZE);
-  for (let off = 0; off < SSIZE; off += CHUNK) {
-    const n = Math.min(CHUNK, SSIZE - off);
-    out.set((await command(CMD.READ, [off, n])).slice(0, n), off);
+async function readAll(size) {
+  const out = new Uint8Array(size);
+  for (let off = 0; off < size; off += CHUNK) {
+    const n = Math.min(CHUNK, size - off);
+    out.set((await command(CMD.READ, off, new Array(n).fill(0))).slice(0, n), off);
   }
   return out;
 }
 
-function checksum(s) { let x = 0; for (let i = 0; i < SSIZE - 1; i++) x = (x + s[i]) & 255; s[SSIZE - 1] = x; return s; }
-
-async function writeSettings(s) {
-  checksum(s);
-  for (let off = 0; off < SSIZE; off += CHUNK) {
-    const chunk = s.slice(off, off + CHUNK);
-    await command(CMD.WRITE, [off, chunk.length, ...chunk]);
-  }
-  await command(CMD.COMMIT);
-}
-
-let pushTimer = null;
-function push() {                   // apply live (debounced), mark unsaved
-  dirty = true; renderSaveBar();
+// Push the model to the device (live), then store it a moment later.
+let pushTimer = null, saveTimer = null, pushing = false, pendingPush = false, needSave = false;
+function schedulePush() {
+  if (!dev) return;
+  setSync("busy");
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => writeSettings(cfg).catch(e => say(e.message, "err")), 120);
+  pushTimer = setTimeout(push, 120);
+}
+async function push() {
+  if (!dev) return;
+  if (pushing) { pendingPush = true; return; }
+  pushing = true;
+  try {
+    const b = model.bytes();
+    for (let off = 0; off < b.length; off += CHUNK) await command(CMD.WRITE, off, Array.from(b.subarray(off, off + CHUNK)));
+    await command(CMD.COMMIT);
+    needSave = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 900);
+  } catch (e) { fail(e); }
+  pushing = false;
+  if (pendingPush) { pendingPush = false; push(); }
+}
+async function save() {
+  if (!dev || pushing || pendingPush) { clearTimeout(saveTimer); saveTimer = setTimeout(save, 400); return; }
+  try {
+    const r = await command(CMD.SAVE);
+    needSave = false;
+    if (r[0]) {
+      toast(model.usesGamepad() ? "Saved. The pad reconnects to add the gamepad…" : "Saved. The pad reconnects without the gamepad…");
+      reconnecting = true;
+      await command(CMD.REBOOT, 0, [], false).catch(() => {});
+    }
+    setSync("saved");
+  } catch (e) { fail(e); }
 }
 
-// ---------------------------------------------------------------- settings helpers
-const act = (table, slot) => { const o = OFF[table] + 3 * slot; return [cfg[o], cfg[o + 1], cfg[o + 2]]; };
-const setAct = (table, slot, a) => { const o = OFF[table] + 3 * slot; cfg[o] = a[0]; cfg[o + 1] = a[1] & 255; cfg[o + 2] = a[2] & 255; push(); };
-const flag = f => !!(cfg[S.flags] & f);
-const setFlag = (f, on) => { cfg[S.flags] = on ? cfg[S.flags] | f : cfg[S.flags] & ~f; push(); };
-const setByte = (k, v) => { cfg[S[k]] = v; push(); };
-
-function describe(a) {
-  const [t, p1, p2] = a;
-  switch (t) {
-    case A.NONE: return "";
-    case A.KEY: return [...MODS.filter(([b]) => p1 & b).map(([, n]) => n), ...(p2 ? [keyLabel(p2)] : [])].join("+");
-    case A.CONSUMER: return (MEDIA.find(m => m[0] === (p1 | p2 << 8)) || [0, "Media"])[1];
-    case A.MOUSE: return (MOUSE.find(m => m[0] === p1) || [0, "Mouse"])[1];
-    case A.WHEEL: case A.HWHEEL: { const v = p1 > 127 ? p1 - 256 : p1; return `Scroll ${v > 0 ? "+" : ""}${v}`; }
-    case A.PAD: return PAD[p1] ? PAD[p1].split(" (")[0] : "Pad";
-    case A.RECENTER: return "Re-center";
-    case A.FN: return "Fn";
-    case A.MODE: return "Mode";
-  }
-  return "?";
-}
-
-// ---------------------------------------------------------------- drawing
-const NS = "http://www.w3.org/2000/svg";
-function el(tag, attrs, parent) {
-  const e = document.createElementNS(NS, tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  if (parent) parent.append(e);
-  return e;
-}
-
-function hueColor(h, level = 1) {
-  if (h >= 192) return `rgba(255,255,255,${level})`;
-  const s = (h & 63) * 4, ph = h >> 6;
-  const [r, g, b] = ph === 0 ? [255 - s, s, 0] : ph === 1 ? [0, 255 - s, s] : [s, 0, 255 - s];
-  return `rgba(${r},${g},${b},${level})`;
-}
-
-function buildPad() {
-  const svg = $("pad");
-  svg.innerHTML = "";
-  const keys = [...Array(nButtons()).keys()].filter(i => i !== knobButton());
-  const w = 130 + keys.length * 120 + 150;
-  svg.setAttribute("viewBox", `0 0 ${w} 210`);
-  el("rect", { x: 6, y: 6, width: w - 12, height: 198, rx: 26, style: "fill:var(--alu);stroke:var(--line);stroke-width:2" }, svg);
-  keys.forEach((i, n) => {
-    const x = 40 + n * 120;
-    const g = el("g", { class: "part", "data-input": i, tabindex: 0, role: "button", "aria-label": inputName(i) }, svg);
-    el("rect", { class: "ledglow", "data-led": n, x: x - 14, y: 46, width: 118, height: 118, rx: 22, fill: "#000", "fill-opacity": 0 }, g);
-    el("rect", { class: "cap", x, y: 60, width: 90, height: 90, rx: 14 }, g);
-    el("text", { class: "caplabel", x: x + 45, y: 100, "text-anchor": "middle" }, g).textContent = n + 1;
-    el("text", { class: "capsub", x: x + 45, y: 120, "text-anchor": "middle", "data-sub": i }, g);
-  });
-  const cx = 40 + keys.length * 120 + 80, cy = 118;
-  const ccw = el("g", { class: "part", "data-input": SLOT_CCW, tabindex: 0, role: "button", "aria-label": inputName(SLOT_CCW) }, svg);
-  el("path", { class: "hit", d: `M${cx - 70} 20 h50 v60 h-50z` }, ccw);
-  el("path", { class: "arrow", d: `M${cx - 32} 38 A66 66 0 0 0 ${cx - 53} 64 M${cx - 53} 64 l2 -14 M${cx - 53} 64 l13 -5` }, ccw);
-  const cw = el("g", { class: "part", "data-input": SLOT_CW, tabindex: 0, role: "button", "aria-label": inputName(SLOT_CW) }, svg);
-  el("path", { class: "hit", d: `M${cx + 20} 20 h55 v60 h-55z` }, cw);
-  el("path", { class: "arrow", d: `M${cx + 32} 38 A66 66 0 0 1 ${cx + 53} 64 M${cx + 53} 64 l-2 -14 M${cx + 53} 64 l-13 -5` }, cw);
-  const kb = knobButton();
-  const knob = el("g", { class: "part knob", "data-input": kb, tabindex: 0, role: "button", "aria-label": inputName(kb) }, svg);
-  el("circle", { class: "knobring", cx, cy, r: 54 }, knob);
-  const mark = el("g", { id: "knobmark", "data-cx": cx, "data-cy": cy }, knob);
-  el("rect", { x: cx - 4, y: cy - 48, width: 8, height: 26, rx: 4, style: "fill:var(--led)" }, mark);
-  el("text", { class: "capsub", x: cx, y: cy + 30, "text-anchor": "middle", "data-sub": kb, style: "fill:var(--ink)" }, knob);
-
-  svg.querySelectorAll(".part").forEach(p => {
-    const pick = () => { selected = +p.dataset.input; render(); };
-    p.addEventListener("click", pick);
-    p.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
-  });
-}
-
-function showLive() {
-  const { pos, btn, fn } = live;
-  $("posnum").textContent = (pos > 0 ? "+" : "") + pos;
-  const mark = $("knobmark");
-  if (mark) {
-    const per = cfg ? Math.max(8, cfg[S.detents]) : 20;
-    mark.setAttribute("transform", `rotate(${pos * 360 / per} ${mark.dataset.cx} ${mark.dataset.cy})`);
-  }
-  const range = cfg ? cfg[S.range] : 10;
-  const f = Math.max(-1, Math.min(1, pos / range));
-  $("posbar").style.left = (f < 0 ? 50 + f * 50 : 50) + "%";
-  $("posbar").style.width = Math.abs(f) * 50 + "%";
-  $("fnbadge").classList.toggle("hidden", !fn);
-  document.querySelectorAll(".part").forEach(p => {
-    const i = +p.dataset.input;
-    p.classList.toggle("down", i < MAXB && !!(btn & (1 << i)));
-  });
-}
-
-let ledPhase = 0, lastBtn = 0, lastPos = 0;
-function ledLoop() {                // preview of the firmware's LED effects
-  ledPhase = (ledPhase + 1) & 255;
-  if (cfg) {
-    const mode = cfg[S.led], hue = cfg[S.hue], b = cfg[S.bright] / 255;
-    const pressed = live.btn & ~lastBtn;
-    for (let i = 0; i < 3; i++) if (pressed & (1 << i)) ledFlash[i] = 1;
-    if (pressed & (1 << knobButton())) ledFlash = [1, 1, 1];
-    if (live.pos > lastPos) ledFlash[2] = 1;
-    if (live.pos < lastPos) ledFlash[0] = 1;
-    lastBtn = live.btn; lastPos = live.pos;
-    const wheel = info && info.mode === 1;
-    document.querySelectorAll(".ledglow").forEach(r => {
-      const i = +r.dataset.led;
-      let h = hue, lvl = 0;
-      if (mode === 0) lvl = 0;
-      else if (wheel) {
-        const rel = Math.max(-1, Math.min(1, live.pos / cfg[S.range]));
-        lvl = i === 0 ? Math.max(0, -rel) : i === 1 ? (live.pos === 0 ? 1 : .1) : Math.max(0, rel);
-      }
-      else if (mode === 1) lvl = ledFlash[i];
-      else if (mode === 2) lvl = 1;
-      else if (mode === 3) { h = (ledPhase + i * 64) % 192; lvl = 1; }
-      else if (mode === 4) { const p = ledPhase & 127; lvl = (p < 64 ? p : 127 - p) / 64; }
-      r.setAttribute("fill", hueColor(h, 1));
-      r.setAttribute("fill-opacity", (lvl * (0.25 + 0.75 * b) * 0.75).toFixed(3));
-    });
-    ledFlash = ledFlash.map(v => v > 0.1 ? v * 0.88 : 0);
-  }
-  setTimeout(ledLoop, 20);
-}
-
-// ---------------------------------------------------------------- action editor
-function fillSelect(sel, items) { sel.innerHTML = ""; items.forEach(([v, t]) => sel.add(new Option(t, v))); }
-
-function actionEditor(title, hint, table, slot, types) {
-  const box = document.createElement("div");
-  box.className = "editor";
-  const a = act(table, slot);
-  const typ = a[0] === A.HWHEEL ? A.WHEEL : a[0];
-  box.innerHTML = `<h3 style="margin-top:0">${title}</h3>${hint ? `<p class="muted">${hint}</p>` : ""}`;
-  const seg = document.createElement("div");
-  seg.className = "seg"; seg.setAttribute("role", "group"); seg.setAttribute("aria-label", title);
-  types.forEach(t => {
-    const b = document.createElement("button");
-    b.textContent = TYPE_LABEL[t]; b.setAttribute("aria-pressed", t === typ);
-    b.onclick = () => {
-      const defaults = { [A.NONE]: [0, 0, 0], [A.KEY]: [A.KEY, 0, 0], [A.CONSUMER]: [A.CONSUMER, 0xE9, 0], [A.MOUSE]: [A.MOUSE, 1, 0],
-        [A.WHEEL]: [A.WHEEL, slot === SLOT_CCW ? 0xFF : 1, 0], [A.PAD]: [A.PAD, 1, 0], [A.RECENTER]: [A.RECENTER, 0, 0],
-        [A.FN]: [A.FN, 0, 0], [A.MODE]: [A.MODE, 0, 0] };
-      setAct(table, slot, defaults[t]); render();
-    };
-    seg.append(b);
-  });
-  box.append(seg);
-  const body = document.createElement("div");
-  box.append(body);
-
-  if (typ === A.KEY) {
-    const cap = document.createElement("span");
-    cap.className = "capture"; cap.tabIndex = 0;
-    cap.textContent = describe(a) || "Click here and press a key combo";
-    cap.setAttribute("aria-label", "Press a key combination");
-    let pendingMods = 0;
-    const modsOf = e => (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
-    cap.addEventListener("keydown", e => {
-      e.preventDefault(); e.stopPropagation();
-      if (MOD_CODES[e.code] !== undefined) { pendingMods = modsOf(e) | MOD_CODES[e.code]; cap.textContent = describe([A.KEY, pendingMods, 0]) + " + …"; return; }
-      const k = KEYS.find(x => x[0] === e.code);
-      if (!k) { say("The browser can’t capture this key. Pick it from the list instead.", "err"); return; }
-      let m = modsOf(e);
-      if (e.getModifierState && e.getModifierState("AltGraph")) m = (m & ~5) | 0x40;
-      setAct(table, slot, [A.KEY, m, k[1]]); say(""); render();
-    });
-    cap.addEventListener("keyup", e => {
-      if (MOD_CODES[e.code] !== undefined && cap.textContent.endsWith("…")) { setAct(table, slot, [A.KEY, pendingMods, 0]); render(); }
-    });
-    const row = document.createElement("div"); row.className = "row"; row.append(cap);
-    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Key");
-    fillSelect(sel, [[0, "or pick a key…"], ...KEYS.map(k => [k[1], k[2]])]);
-    sel.value = a[2];
-    sel.onchange = () => { setAct(table, slot, [A.KEY, act(table, slot)[1], +sel.value]); render(); };
-    row.append(sel);
-    body.append(row);
-    const mods = document.createElement("div"); mods.className = "mods";
-    MODS.forEach(([bit, name]) => {
-      const l = document.createElement("label");
-      const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!(a[1] & bit);
-      c.onchange = () => { const cur = act(table, slot); setAct(table, slot, [A.KEY, c.checked ? cur[1] | bit : cur[1] & ~bit, cur[2]]); render(); };
-      l.append(c, " " + name); mods.append(l);
-    });
-    body.append(mods);
-  }
-  else if (typ === A.CONSUMER) {
-    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Media key");
-    fillSelect(sel, MEDIA); sel.value = a[1] | a[2] << 8;
-    sel.onchange = () => { const u = +sel.value; setAct(table, slot, [A.CONSUMER, u & 255, u >> 8]); render(); };
-    body.append(sel);
-  }
-  else if (typ === A.MOUSE) {
-    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Mouse button");
-    fillSelect(sel, MOUSE); sel.value = a[1];
-    sel.onchange = () => { setAct(table, slot, [A.MOUSE, +sel.value, 0]); render(); };
-    body.append(sel);
-  }
-  else if (typ === A.WHEEL) {
-    const row = document.createElement("div"); row.className = "row";
-    const axis = document.createElement("select"); axis.setAttribute("aria-label", "Scroll direction");
-    fillSelect(axis, [[A.WHEEL, "Vertical"], [A.HWHEEL, "Horizontal"]]); axis.value = a[0];
-    const amt = document.createElement("input"); amt.type = "number"; amt.min = -20; amt.max = 20; amt.style.width = "5em";
-    amt.value = a[1] > 127 ? a[1] - 256 : a[1]; amt.setAttribute("aria-label", "Notches");
-    const upd = () => { setAct(table, slot, [+axis.value, Math.max(-20, Math.min(20, +amt.value || 0)), 0]); render(); };
-    axis.onchange = upd; amt.onchange = upd;
-    row.append(axis, amt, Object.assign(document.createElement("span"), { className: "muted", textContent: "notches (negative = down / left)" }));
-    body.append(row);
-  }
-  else if (typ === A.PAD) {
-    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Gamepad button");
-    fillSelect(sel, PAD.slice(1).map((n, i) => [i + 1, PAD_RL[i + 1] ? `${n}: ${PAD_RL[i + 1]} in Rocket League` : n]));
-    sel.value = a[1];
-    sel.onchange = () => { setAct(table, slot, [A.PAD, +sel.value, 0]); render(); };
-    body.append(sel);
-  }
-  else if (typ === A.FN) body.innerHTML = `<p class="muted">While this is held, every key and the knob use their Fn layer actions.</p>`;
-  else if (typ === A.MODE) body.innerHTML = `<p class="muted">Switches between keyboard and wheel mode. The macropad reconnects.</p>`;
-  else if (typ === A.RECENTER) body.innerHTML = `<p class="muted">The current knob position becomes straight ahead.</p>`;
-  return box;
-}
-
-// ---------------------------------------------------------------- rendering
-function render() {
-  if (!cfg) return;
-  const knobTurn = selected === SLOT_CW || selected === SLOT_CCW;
-  document.querySelectorAll(".part").forEach(p => p.classList.toggle("selected", +p.dataset.input === selected));
-  document.querySelectorAll("[data-sub]").forEach(t => {
-    const i = +t.dataset.sub;
-    const text = tab === "wheel" ? describe(act("wheel", i)) : describe(act(layer, i));
-    t.textContent = text.length > 14 ? text.slice(0, 13) + "…" : text;
-  });
-
-  // keyboard tab
-  $("kbdtitle").textContent = inputName(selected);
-  document.querySelectorAll("#layer button").forEach(b => b.setAttribute("aria-pressed", b.dataset.layer === layer));
-  const ke = $("kbdeditors"); ke.innerHTML = "";
-  ke.append(actionEditor(knobTurn ? "Each detent sends" : "When pressed",
-    layer === "fn" ? "Used while the Fn layer is active." : "", layer, selected, knobTurn ? TYPES_KNOB : TYPES_KBD));
-  if (!knobTurn) ke.append(actionEditor("When held", `Optional. Held longer than ${cfg[S.hold] * 10} ms, the key does this instead, and the pressed action is sent on a quick tap. Works in both layers.`,
-    "hold", selected, TYPES_KBD));
-
-  // wheel tab
-  const we = $("wheeleditors"); we.innerHTML = "";
-  if (knobTurn) {
-    $("wheeltitle").textContent = "Knob";
-    we.innerHTML = `<p class="muted">In wheel mode the knob steers. Set it up on the right.</p>`;
-  } else {
-    $("wheeltitle").textContent = inputName(selected);
-    we.append(actionEditor("When pressed", "Gamepad buttons, keyboard keys and media keys all work in wheel mode.", "wheel", selected, TYPES_WHEEL));
-  }
-  $("axis").value = cfg[S.axis];
-  $("range").value = cfg[S.range]; $("rangev").textContent = cfg[S.range];
-  const per = cfg[S.detents] || 20;
-  $("rangehint").textContent = `${cfg[S.range]} detents is ${(cfg[S.range] / per).toFixed(2).replace(/\.?0+$/, "")} of a turn each way; every detent moves the stick by ${(100 / cfg[S.range]).toFixed(0)} %.`;
-  $("clamp").checked = flag(FLAG.clamp);
-
-  // lights
-  document.querySelectorAll("#ledmode button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.led === cfg[S.led]));
-  const white = cfg[S.hue] >= 192;
-  $("white").checked = white;
-  $("hue").disabled = white;
-  if (!white) $("hue").value = cfg[S.hue];
-  $("swatch").style.background = hueColor(cfg[S.hue]);
-  $("bright").value = cfg[S.bright]; $("brightv").textContent = cfg[S.bright];
-
-  // knob & timing
-  $("detents").value = cfg[S.detents];
-  $("invert").checked = flag(FLAG.invert);
-  $("halfstep").checked = flag(FLAG.halfstep);
-  $("gesture").checked = !flag(FLAG.nogesture);
-  $("hold").value = cfg[S.hold]; $("holdv").textContent = cfg[S.hold] * 10;
-  $("tap").value = cfg[S.tap]; $("tapv").textContent = cfg[S.tap];
-  $("debounce").value = cfg[S.debounce]; $("debouncev").textContent = cfg[S.debounce];
-
-  // device
-  $("legacy").checked = flag(FLAG.legacy);
-  $("devinfo").innerHTML = info ? `<dt>Firmware</dt><dd>${info.fw}</dd><dt>Board</dt><dd>${info.board === 1 ? "3 keys + knob (CH552)" : "board " + info.board}</dd>
-    <dt>Buttons</dt><dd>${info.buttons}</dd><dt>Running</dt><dd>${info.mode ? "wheel" : "keyboard"} mode</dd>` : "";
-  document.querySelectorAll("#devmode button").forEach(b => { b.disabled = !dev; b.setAttribute("aria-pressed", info && +b.dataset.mode === info.mode); });
-}
-
-function renderSaveBar() {
-  $("dirty").textContent = dirty ? "Changes are live, but they’re lost on unplug until you save." : "All changes saved.";
-  $("dirty").style.color = dirty ? "" : "var(--muted)";
-  $("save").disabled = !dirty;
-}
-
-function selectTab(t) {
-  tab = t;
-  document.querySelectorAll("[role=tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  document.querySelectorAll("[data-panel]").forEach(p => p.classList.toggle("hidden", p.dataset.panel !== t));
-  render();
-}
-
-// ---------------------------------------------------------------- connection
+// =============================================================================== connection
+let reconnecting = false;
 async function connect() {
   if (!("hid" in navigator)) return;
   try {
     const list = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: PID, usagePage: PAGE }] });
     if (list.length) await attach(list[0]);
-  } catch (e) { say("Could not connect: " + e.message, "err"); }
+  } catch (e) { fail(e); }
 }
 
 async function attach(d) {
   try {
     if (!d.opened) await d.open();
     dev = d;
-    dev.addEventListener("inputreport", e => {
-      if (e.data.byteLength < 5) return;
-      live = { pos: e.data.getInt16(0, true), btn: e.data.getUint8(2), fn: e.data.getUint8(4) };
-      showLive();
-    });
-    const r = await command(CMD.INFO);
-    info = { fw: `${r[0]}.${r[1]}.${r[2]}`, board: r[3], buttons: r[4], knobButton: r[5], mode: r[7] };
-    cfg = await readSettings();
+    setSync("busy", "Connecting…");
+    const info = await command(CMD.INFO);
+    const nl = new Layout(info);
+    if (nl.version !== SVER) throw new Error("this page and the firmware don't match. Update the firmware with flash.bat");
+    L = nl;
+    model = new Model(L, await readAll(L.size));
+    prof = L.current;
     const st = await command(CMD.STATUS);
-    live = { pos: (st[0] | st[1] << 8) << 16 >> 16, btn: st[2], fn: st[4] };
-    dirty = false;
-    buildPad();
-    $("intro").classList.add("hidden");
-    $("app").classList.remove("hidden");
-    $("savebar").classList.remove("hidden");
-    $("recenter").disabled = false;
-    $("connect").classList.add("hidden");
-    $("conn").innerHTML = `<b>Connected</b>, firmware ${info.fw}`;
-    if (info.mode === 1 && tab === "kbd") selectTab("wheel"); else render();
-    renderSaveBar(); showLive(); say("");
-  } catch (e) {
-    say("Macropad found but not answering: " + e.message, "err");
-  }
+    live = { pos: (st[0] | st[1] << 8) << 16 >> 16, btn: st[2], prof: st[3], flags: st[4] };
+    if (!reconnecting) { undoStack = []; redoStack = []; }
+    if (!sel || (sel.kind === "input" && sel.i >= L.inputs)) sel = { kind: "input", i: L.keys[0]?.i ?? 0 };
+    dev.oninputreport = e => {
+      if (e.data.byteLength < 5) return;
+      const prev = live;
+      live = { pos: e.data.getInt16(0, true), btn: e.data.getUint8(2), prof: e.data.getUint8(3), flags: e.data.getUint8(4) };
+      if (live.prof !== prev.prof && live.prof !== prof) { prof = live.prof; render(); } else renderLive();
+    };
+    if (reconnecting) toast("Reconnected");
+    reconnecting = false;
+    setSync("saved");
+    render();
+  } catch (e) { dev = null; fail(e); render(); }
 }
 
 function detach() {
-  dev = null; info = null;
-  $("app").classList.add("hidden");
-  $("savebar").classList.add("hidden");
-  $("intro").classList.remove("hidden");
-  $("connect").classList.remove("hidden");
-  $("recenter").disabled = true;
-  $("conn").textContent = "Not connected";
-  document.querySelectorAll("#devmode button").forEach(b => b.disabled = true);
+  dev = null;
+  setSync("off");
+  render();
 }
 
-// ---------------------------------------------------------------- wiring
-function init() {
+function setSync(state, text) {
+  const dot = $("dot"), label = $("connText");
+  dot.className = "dot" + (state === "saved" ? " on" : state === "busy" ? " busy" : "");
+  label.textContent = text || (state === "saved" ? "Connected · saved on the pad" : state === "busy" ? "Saving…" : reconnecting ? "Reconnecting…" : "Demo");
+}
+
+function fail(e) { console.error(e); toast(e.message || String(e), true); if (dev) setSync("saved"); }
+
+let toastTimer;
+function toast(text, err) {
+  const t = $("toast"); t.textContent = text; t.className = "toast on" + (err ? " err" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast" + (err ? " err" : ""), err ? 6000 : 3200);
+}
+
+// =============================================================================== editing
+function change(fn, key) {
+  const now = Date.now();
+  if (key !== lastUndoKey || now - lastUndoTime > 1500) {
+    undoStack.push(new Uint8Array(model.b)); if (undoStack.length > 100) undoStack.shift();
+    redoStack = [];
+  }
+  lastUndoKey = key; lastUndoTime = now;
+  fn(model);
+  schedulePush();
+  render();
+}
+function undo() { if (!undoStack.length) return; redoStack.push(new Uint8Array(model.b)); model.b = undoStack.pop(); lastUndoKey = null; schedulePush(); render(); }
+function redo() { if (!redoStack.length) return; undoStack.push(new Uint8Array(model.b)); model.b = redoStack.pop(); lastUndoKey = null; schedulePush(); render(); }
+
+function selectProfile(p) {
+  prof = p;
+  if (dev) command(CMD.PROFILE, p).catch(fail);
+  render();
+}
+
+// =============================================================================== rendering helpers
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "text") el.textContent = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid);
+  return el;
+}
+const ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+function svg(markup) { const t = document.createElement("template"); t.innerHTML = markup; return t.content.firstChild; }
+
+function hexToRgb(hex) { return [1, 3, 5].map(k => parseInt(hex.substr(k, 2), 16)); }
+function setAccent() {
+  const c = model.color(prof), [r, g, b] = hexToRgb(c);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const root = document.documentElement.style;
+  // very light colors (white, yellow) need a darker accent to stay visible on the page
+  root.setProperty("--accent", lum > 0.8 ? `rgb(${r * .55 | 0}, ${g * .55 | 0}, ${b * .55 | 0})` : c);
+  root.setProperty("--accent-soft", `rgba(${r}, ${g}, ${b}, .16)`);
+}
+
+// =============================================================================== render
+function render() {
+  setAccent();
+  renderBanner();
+  renderProfiles();
+  $("undo").disabled = !undoStack.length; $("redo").disabled = !redoStack.length;
+  $("connect").classList.add("hidden");                // the banner carries the Connect button
+  if (tab === "controls") { renderDevice(); renderCombos(); renderInspector(); }
+  if (tab === "lighting") { renderDevice("l-"); renderLighting(); }
+  if (tab === "settings") renderSettings();
+  renderLive();
+}
+
+function renderBanner() {
+  const b = $("banner"), t = $("bannerText"), btn = $("bannerBtn");
+  if (dev) { b.classList.add("hidden"); return; }
+  b.classList.remove("hidden");
   if (!("hid" in navigator)) {
-    $("connect").disabled = true;
-    $("nohid").textContent = "This browser can’t talk to USB devices. Open the page in Google Chrome or Microsoft Edge.";
+    t.textContent = "This browser can't talk to USB devices. Open this page in Chrome, Edge or Opera on a computer. You can still look around: this is a demo.";
+    btn.classList.add("hidden");
+  } else if (reconnecting) {
+    t.textContent = "The pad is reconnecting…"; btn.classList.add("hidden");
+  } else {
+    t.textContent = "You're looking at a demo. Plug in your macropad and connect to change it; every change is saved on the pad right away.";
+    btn.classList.remove("hidden");
   }
-  buildPad();
-  $("connect").onclick = connect;
-  document.querySelectorAll("[role=tab]").forEach(b => b.onclick = () => selectTab(b.dataset.tab));
-  document.querySelectorAll("#layer button").forEach(b => b.onclick = () => { layer = b.dataset.layer; render(); });
+}
 
-  $("axis").onchange = () => { setByte("axis", +$("axis").value); render(); };
-  $("range").oninput = () => { $("rangev").textContent = $("range").value; };
-  $("range").onchange = () => { setByte("range", +$("range").value); render(); };
-  $("clamp").onchange = e => setFlag(FLAG.clamp, e.target.checked);
-  document.querySelectorAll("#ledmode button").forEach(b => b.onclick = () => { setByte("led", +b.dataset.led); render(); });
-  $("hue").oninput = () => { cfg[S.hue] = +$("hue").value; $("swatch").style.background = hueColor(cfg[S.hue]); };
-  $("hue").onchange = () => { setByte("hue", +$("hue").value); render(); };
-  $("white").onchange = e => { setByte("hue", e.target.checked ? 255 : 96); render(); };
-  $("bright").oninput = () => { $("brightv").textContent = $("bright").value; cfg[S.bright] = +$("bright").value; };
-  $("bright").onchange = () => setByte("bright", +$("bright").value);
-  $("detents").onchange = () => { setByte("detents", Math.max(8, Math.min(100, +$("detents").value || 20))); render(); showLive(); };
-  $("invert").onchange = e => setFlag(FLAG.invert, e.target.checked);
-  $("halfstep").onchange = e => setFlag(FLAG.halfstep, e.target.checked);
-  $("gesture").onchange = e => setFlag(FLAG.nogesture, !e.target.checked);
-  $("legacy").onchange = e => setFlag(FLAG.legacy, e.target.checked);
-  for (const [id, key, mul] of [["hold", "hold", 10], ["tap", "tap", 1], ["debounce", "debounce", 1]]) {
-    $(id).oninput = () => { $(id + "v").textContent = +$(id).value * mul; };
-    $(id).onchange = () => { setByte(key, +$(id).value); render(); };
+function renderProfiles() {
+  const box = $("profiles"); box.replaceChildren();
+  box.append(h("span", { class: "profiles-label", text: "Profile" }));
+  for (let p = 0; p < L.profiles; p++) {
+    box.append(h("button", { class: "prof", "aria-pressed": p === prof ? "true" : "false", onclick: () => selectProfile(p) },
+      h("span", { class: "sw", style: `background:${model.color(p)}` }), `Profile ${p + 1}`,
+      dev && live.prof === p ? h("span", { class: "live", text: "active" }) : null));
   }
+  const presetSel = h("select", { class: "plain", "aria-label": "Fill this profile with a preset", onchange: e => {
+      const v = e.target.value; e.target.value = "";
+      if (v) change(m => applyPreset(m, prof, v), "preset");
+      toast(`Profile ${prof + 1}: ${PRESETS.find(x => x[0] === v)[1].toLowerCase()}`);
+    } },
+    h("option", { value: "", text: "Fill with a preset…" }), PRESETS.map(([k, n]) => h("option", { value: k, text: n })));
+  const copySel = h("select", { class: "plain", "aria-label": "Copy another profile into this one", onchange: e => {
+      const v = +e.target.value; e.target.value = "";
+      change(m => { for (let i = 0; i < L.inputs; i++) m.setAction(prof, i, m.action(v, i)); m.setEffect(prof, m.effect(v)); }, "copy");
+      toast(`Copied profile ${v + 1} into profile ${prof + 1}`);
+    } },
+    h("option", { value: "", text: "Copy from…" }),
+    Array.from({ length: L.profiles }, (_, p) => p).filter(p => p !== prof).map(p => h("option", { value: p, text: `Profile ${p + 1}` })));
+  box.append(h("div", { class: "prof-tools" }, tab === "settings" ? null : [copySel, presetSel]));
+}
 
-  $("save").onclick = async () => {
-    try { clearTimeout(pushTimer); await writeSettings(cfg); await command(CMD.SAVE); dirty = false; renderSaveBar(); say("Saved to the macropad.", "ok"); }
-    catch (e) { say(e.message, "err"); }
-  };
-  $("recenter").onclick = async () => { try { await command(CMD.RECENTER); live.pos = 0; showLive(); } catch (e) { say(e.message, "err"); } };
-  $("defaults").onclick = async () => {
-    try { await command(CMD.DEFAULTS); await command(CMD.SAVE); cfg = await readSettings(); dirty = false; renderSaveBar(); render(); say("Defaults restored and saved.", "ok"); }
-    catch (e) { say(e.message, "err"); }
-  };
-  $("boot").onclick = async () => {
-    try { await command(CMD.BOOT, [], false); say("The macropad is in flashing mode (LEDs white). Now run flash.bat.", "ok"); }
-    catch (e) { say(e.message, "err"); }
-  };
-  document.querySelectorAll("#devmode button").forEach(b => b.onclick = async () => {
-    const mode = +b.dataset.mode;
-    if (!info || mode === info.mode) return;
-    try {
-      clearTimeout(pushTimer);
-      cfg[S.mode] = mode;
-      await writeSettings(cfg); await command(CMD.SAVE); await command(CMD.REBOOT, [], false);
-      dirty = false;
-      say(mode ? (flag(FLAG.legacy) ? "Switching to compatibility wheel mode. This page can’t reach the macropad in that mode."
-                                     : "Switching to wheel mode. The macropad reconnects as an Xbox controller plus keyboard.")
-               : "Switching to keyboard mode.", "ok");
-    } catch (e) { say(e.message, "err"); }
+// ---------------------------------------------------------------- device drawing
+function renderDevice(px = "") {
+  const d = $(px + "device"); d.replaceChildren();
+  const keys = h("div", { class: "keys" });
+  for (const k of L.keys) {
+    const a = model.action(prof, k.i), long = model.findCombo(k.i, k.i, prof);
+    const selected = !px && sel.kind === "input" && sel.i === k.i;
+    keys.append(h("div", { class: "cap-wrap", "data-selected": selected ? "true" : "false" },
+      h("div", { class: "glow", id: px + "glow" + k.i }),
+      h("span", { class: "sel-ring" }),
+      h("button", { class: "cap", id: px + "cap" + k.i, tabindex: px ? -1 : null, "aria-label": `Key ${k.n}: ${describe(a)}`, onclick: () => select({ kind: "input", i: k.i }) },
+        h("span", { class: "legend" + (a.t === T.NONE ? " none" : ""), text: describe(a, true) }),
+        long ? h("span", { class: "sub", text: "hold: " + describe(long.a, true) }) : null),
+      h("span", { class: "ctl-name", text: `Key ${k.n}` })));
+  }
+  d.append(keys);
+  if (L.knob < L.buttons) {
+    const axis = model.action(prof, L.right).t === T.AXIS;
+    const selected = !px && sel.kind === "input" && (sel.i === L.knob || sel.i === L.right || sel.i === L.left);
+    const legend = h("div", { class: "knob-legend" },
+      axis ? [h("b", { text: "Turn" }), h("span", { text: describe(model.action(prof, L.right), true) })]
+           : [h("b", { text: "Right" }), h("span", { text: describe(model.action(prof, L.right), true) }),
+              h("b", { text: "Left" }), h("span", { text: describe(model.action(prof, L.left), true) })],
+      h("b", { text: "Press" }), h("span", { text: describe(model.action(prof, L.knob), true) }));
+    d.append(h("div", { class: "knob-wrap", "data-selected": selected ? "true" : "false" },
+      h("span", { class: "sel-ring" }),
+      h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob }) },
+        h("span", { class: "knob-top", id: px + "knobTop" })),
+      legend));
+  }
+}
+
+function select(s) {
+  sel = s; openPicker = null;
+  render();
+  if (window.innerWidth <= 980) $("inspector").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ---------------------------------------------------------------- live state
+let ledTimer = null;
+function renderLive() {
+  if (tab === "settings") return;
+  const px = tab === "lighting" ? "l-" : "";
+  for (const k of L.keys) $(px + "cap" + k.i)?.classList.toggle("down", !!(live.btn & 1 << k.i));
+  $(px + "knob")?.classList.toggle("down", !!(live.btn & 1 << L.knob));
+  const det = Math.max(4, model.b[S.DETENTS]);
+  const top = $(px + "knobTop"); if (top) top.style.transform = `rotate(${(live.pos * 360 / det) % 360}deg)`;
+  if (tab === "controls") {
+    const tag = $("pressedTag");
+    if (tag && sel.kind === "input") tag.classList.toggle("on", sel.i < L.buttons && !!(live.btn & 1 << sel.i));
+    const ax = model.action(prof, L.right);
+    const meter = $("axisMeter");
+    meter.classList.toggle("hidden", ax.t !== T.AXIS);
+    if (ax.t === T.AXIS) {
+      const range = Math.max(1, ax.p2), v = dev ? Math.max(-range, Math.min(range, live.pos)) : 0, f = v / range;
+      const fill = $("axisFill");
+      fill.style.left = f < 0 ? `${50 + f * 50}%` : "50%"; fill.style.width = `${Math.abs(f) * 50}%`;
+      $("axisText").textContent = v === 0 ? "Center" : `${v > 0 ? "Right" : "Left"} ${Math.round(Math.abs(f) * 100)} %`;
+    }
+  }
+  paintLeds();
+}
+
+// Approximate the light effect under the keycaps
+const pressGlow = {};
+function paintLeds() {
+  const e = model.effect(prof), c = model.color(prof), bright = model.b[S.BRIGHT] / 255;
+  const t = performance.now() / 1000, speed = model.b[S.SPEED];
+  const ax = model.action(prof, L.right);
+  L.keys.forEach((k, n) => {
+    const g = $((tab === "lighting" ? "l-" : "") + "glow" + k.i); if (!g) return;
+    let color = c, a = 0;
+    if (e === 1) a = 1;
+    else if (e === 2) a = 0.15 + 0.85 * (0.5 - 0.5 * Math.cos(t * speed * 0.6));
+    else if (e === 3) { color = `hsl(${(t * speed * 9 + n * 60) % 360} 100% 50%)`; a = 1; }
+    else if (e === 4) { if (live.btn & 1 << k.i) pressGlow[k.i] = 1; a = pressGlow[k.i] || 0; pressGlow[k.i] = Math.max(0, a - 0.04); }
+    else if (e === 5) {
+      if (ax.t === T.AXIS && L.keys.length >= 3) {
+        const range = Math.max(1, ax.p2), v = dev ? Math.max(-range, Math.min(range, live.pos)) : 0;
+        a = n === 1 ? (v === 0 ? 1 : 0.16) : n === 0 ? (v < 0 ? -v / range : 0) : n === 2 ? (v > 0 ? v / range : 0) : 0.16;
+      } else a = 1;
+    }
+    g.style.setProperty("--led", color);
+    g.style.setProperty("--led-a", (a * (0.25 + 0.75 * bright)).toFixed(3));
   });
-  $("export").onclick = () => {
-    const doc = { format: "detent-settings", version: 2, firmware: info && info.fw, raw: Array.from(checksum(cfg), b => b.toString(16).padStart(2, "0")).join("") };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: "detent-settings.json" });
-    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-  $("import").onclick = () => $("importfile").click();
-  $("importfile").onchange = async e => {
-    const f = e.target.files[0]; e.target.value = "";
-    if (!f) return;
-    try {
-      const doc = JSON.parse(await f.text());
-      if (doc.format !== "detent-settings" || !doc.raw || doc.raw.length !== SSIZE * 2) throw new Error("this isn’t a Detent settings file from this page");
-      const raw = new Uint8Array(doc.raw.match(/../g).map(h => parseInt(h, 16)));
-      raw[S.mode] = cfg[S.mode];                      // importing never switches modes
-      await writeSettings(raw); await command(CMD.SAVE);
-      cfg = raw; dirty = false; renderSaveBar(); render(); say("Settings imported and saved.", "ok");
-    } catch (err) { say("Import failed: " + err.message, "err"); }
-  };
-
-  if ("hid" in navigator) {
-    navigator.hid.addEventListener("disconnect", e => { if (e.device === dev) detach(); });
-    navigator.hid.addEventListener("connect", async e => {
-      if (!dev && e.device.collections.some(c => c.usagePage === PAGE)) { await sleep(400); attach(e.device); }
-    });
-    navigator.hid.getDevices().then(list => {
-      const d = list.find(x => x.vendorId === VID && x.productId === PID && x.collections.some(c => c.usagePage === PAGE));
-      if (d) attach(d);
-    });
-  }
-  ledLoop();
-  requestAnimationFrame(padLoop);
+  const animated = tab !== "settings" && (e === 2 || e === 3 || e === 4);
+  if (animated && !ledTimer) ledTimer = setInterval(paintLeds, 50);
+  if (!animated && ledTimer) { clearInterval(ledTimer); ledTimer = null; }
 }
 
-// ---------------------------------------------------------------- wheel test (Gamepad API)
-const PAD_BTN_NAMES = ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Back", "Start", "LS", "RS", "Up", "Down", "Left", "Right", "Guide"];
-function padLoop() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
-  const p = pads.find(g => /1189|8890|xbox|xinput/i.test(g.id)) || pads[0];
-  if (p) {
-    const ax = cfg ? [0, 1, 2, 3][Math.min(cfg[S.axis], 3)] : 0;
-    const x = p.axes[ax] || 0;
-    $("padstatus").textContent = `Gamepad detected. Stick: ${x.toFixed(2)}`;
-    $("padbar").style.left = (x < 0 ? 50 + x * 50 : 50) + "%";
-    $("padbar").style.width = Math.abs(x) * 50 + "%";
-    const down = p.buttons.map((b, i) => (b.pressed ? PAD_BTN_NAMES[i] : null)).filter(Boolean);
-    $("padbtns").textContent = down.length ? "Pressed: " + down.join(", ") : "No buttons pressed";
-  }
-  requestAnimationFrame(padLoop);
+// ---------------------------------------------------------------- inspector
+function renderInspector() {
+  const box = $("inspector"); box.replaceChildren();
+  if (sel.kind === "combo") return renderComboInspector(box);
+  const i = sel.i;
+  if (i === L.knob || i === L.right || i === L.left) return renderKnobInspector(box);
+  const k = L.keys.find(x => x.i === i);
+  const body = h("div", { class: "panel-b" });
+  box.append(h("div", { class: "panel-h insp-title" }, h("h2", { text: `Key ${k.n}` }),
+    h("span", { class: "pressed-tag", id: "pressedTag", text: "pressed" })), body);
+
+  const deferred = model.startsCombos(i, prof) || model.findCombo(i, i, prof);
+  body.append(field("When pressed", null, actionEditor(`press${i}`, model.action(prof, i), a => change(m => m.setAction(prof, i, a), `press${i}`), { input: i })));
+  if (deferred) body.lastChild.append(h("p", { class: "note", text: `Key ${k.n} starts combos or has a hold action, so this is sent when you let go.` }));
+
+  const long = model.findCombo(i, i, prof);
+  const holdMs = model.b[S.HOLD] * 10;
+  body.append(field("When held", `${holdMs / 1000} s or longer`, actionEditor(`long${i}`, long ? long.a : A(T.NONE),
+    a => change(m => setLongPress(m, i, a, long), `long${i}`), { input: i, allowNone: "Same as pressed" })));
+
+  const mine = model.combos().filter(c => c.held === i && c.trig !== i && (c.prof === prof || c.prof === ALL));
+  const list = h("div", { class: "combo-list" }, mine.map(c => comboRow(c, true)));
+  body.append(field(`While key ${k.n} is held`, null, mine.length ? list : h("p", { class: "note", style: "margin:0", text: "No combos yet." }),
+    h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => addCombo(i) }, "Add combo with this key"))));
 }
 
-init();
+function setLongPress(m, i, a, existing) {
+  if (a.t === T.NONE) { if (existing) m.delCombo(existing.slot); return; }
+  if (existing && existing.prof === prof) { m.setCombo(existing.slot, { ...existing, a }); return; }
+  const slot = m.freeSlot();
+  if (slot < 0) { toast(`All ${L.combos} combo slots are used. Remove one first.`, true); return; }
+  m.setCombo(slot, { held: i, trig: i, prof, a });
+}
+
+function renderKnobInspector(box) {
+  const body = h("div", { class: "panel-b" });
+  box.append(h("div", { class: "panel-h insp-title" }, h("h2", { text: "Knob" }),
+    h("span", { class: "pressed-tag", id: "pressedTag", text: "pressed" })), body);
+  const r = model.action(prof, L.right), axis = r.t === T.AXIS;
+
+  const mode = h("div", { class: "seg two" },
+    h("button", { "aria-pressed": !axis ? "true" : "false", onclick: () => { if (axis) change(m => { m.setAction(prof, L.right, A(T.MEDIA, 0xE9)); m.setAction(prof, L.left, A(T.MEDIA, 0xEA)); }, "kmode"); } }, "An action per click"),
+    h("button", { "aria-pressed": axis ? "true" : "false", onclick: () => { if (!axis) change(m => { m.setAction(prof, L.right, A(T.AXIS, 0, 10)); m.setAction(prof, L.left, A(T.NONE)); }, "kmode"); } }, "Gamepad axis"));
+  body.append(field("Turning sends", null, mode));
+
+  if (!axis) {
+    body.append(field("Turn right", "each click", actionEditor("right", r, a => change(m => m.setAction(prof, L.right, a), "right"), { input: L.right, turn: true })));
+    body.append(field("Turn left", "each click", actionEditor("left", model.action(prof, L.left), a => change(m => m.setAction(prof, L.left, a), "left"), { input: L.left, turn: true })));
+  } else {
+    const range = r.p2, det = Math.max(4, model.b[S.DETENTS]);
+    const axSel = h("select", { class: "plain", style: "width:100%", onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (+e.target.value) | (r.p1 & AXIS_FREE), range)), "axis") },
+      AXES.map(([k, n], idx) => h("option", { value: idx, selected: (r.p1 & 15) === idx, text: n })));
+    body.append(field("Axis", null, axSel));
+    const val = h("span", { class: "val", text: range });
+    const slider = h("input", { type: "range", min: 1, max: 50, value: range, oninput: e => {
+        val.textContent = e.target.value;
+        deg.textContent = `${e.target.value} clicks = ${Math.round(e.target.value * 360 / det)}° of turning`;
+        change(m => m.setAction(prof, L.right, A(T.AXIS, r.p1, +e.target.value)), "range");
+      } });
+    const deg = h("p", { class: "note", text: `${range} clicks = ${Math.round(range * 360 / det)}° of turning` });
+    body.append(field("Clicks from center to full", null, h("div", { class: "slider-row" }, slider, val), deg));
+    const stop = h("label", { class: "switch" }, h("input", { type: "checkbox", checked: !(r.p1 & AXIS_FREE),
+      onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (r.p1 & 15) | (e.target.checked ? 0 : AXIS_FREE), range)), "stop") }), h("span"));
+    body.append(field("Hard stop", null, h("div", { class: "row" }, h("span", { class: "muted small", style: "flex:1", text: "Turning past full doesn't wind up, so turning back responds at once." }), stop)));
+    body.append(h("div", { class: "row", style: "margin:4px 0 6px" },
+      h("button", { class: "btn", disabled: !dev, onclick: () => command(CMD.RECENTER).catch(fail) }, "Center now"),
+      h("span", { class: "muted small", text: "Tip: set the knob press to “Center the knob axis”." })));
+  }
+  body.append(field("When pressed", null, actionEditor(`press${L.knob}`, model.action(prof, L.knob), a => change(m => m.setAction(prof, L.knob, a), `press${L.knob}`), { input: L.knob })));
+  if (model.startsCombos(L.knob, prof)) body.lastChild.append(h("p", { class: "note", text: "The knob starts combos, so its press is sent when you let go." }));
+
+  const mine = model.combos().filter(c => c.held === L.knob && c.trig !== L.knob && (c.prof === prof || c.prof === ALL));
+  body.append(field("While the knob is held", null,
+    mine.length ? h("div", { class: "combo-list" }, mine.map(c => comboRow(c, true))) : h("p", { class: "note", style: "margin:0", text: "No combos yet." }),
+    h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => addCombo(L.knob) }, "Add combo with the knob"))));
+}
+
+function field(title, hint, ...content) {
+  return h("div", { class: "field" }, h("div", { class: "field-h" }, h("h3", { text: title }), hint ? h("span", { class: "hint", text: hint }) : null), ...content);
+}
+
+// ---------------------------------------------------------------- action editor
+const CATS = [["key", "Keyboard"], ["media", "Media"], ["mouse", "Mouse"], ["pad", "Gamepad"], ["device", "Profile, lights"], ["none", "Nothing"]];
+const catOf = a => ({ [T.KEY]: "key", [T.MEDIA]: "media", [T.MOUSE]: "mouse", [T.SCROLL]: "mouse", [T.MOVE]: "mouse", [T.PAD]: "pad",
+  [T.CENTER]: "device", [T.PROFILE]: "device", [T.LIGHT]: "device", [T.AXIS]: "pad" })[a.t] || "none";
+const pickerCat = {};
+
+function actionEditor(id, a, onSet, opts = {}) {
+  const expanded = openPicker === id;
+  const none = a.t === T.NONE || (a.t === T.KEY && !a.p1 && !a.p2);
+  const btn = h("button", { class: "act-btn", "aria-expanded": expanded ? "true" : "false",
+      onclick: () => { openPicker = expanded ? null : id; recording = false; render(); } },
+    h("span", { class: "v" + (none ? " none" : ""), text: none && opts.allowNone ? opts.allowNone : describe(a) }), svg(ICON_CHEVRON));
+  const wrap = h("div", {}, btn);
+  if (!expanded) return wrap;
+
+  const cat = pickerCat[id] || (catOf(a) === "none" ? "key" : catOf(a));
+  const seg = h("div", { class: "seg cats", role: "tablist" }, CATS.map(([k, n]) => h("button", { "aria-pressed": k === cat ? "true" : "false",
+    onclick: () => { pickerCat[id] = k; if (k === "none") onSet(A(T.NONE)); else render(); } }, n)));
+  const body = h("div", { class: "pick-body" });
+  const set = x => { pickerCat[id] = catOf(x) === "none" ? cat : catOf(x); onSet(x); };
+
+  if (cat === "key") body.append(keyEditor(a, set));
+  else if (cat === "media") body.append(h("div", { class: "grid" }, MEDIA.map(m => h("button", { class: "opt",
+    "aria-pressed": a.t === T.MEDIA && (a.p1 | a.p2 << 8) === m[0] ? "true" : "false", onclick: () => set(A(T.MEDIA, m[0] & 255, m[0] >> 8)) }, m[1]))));
+  else if (cat === "mouse") body.append(mouseEditor(a, set, opts));
+  else if (cat === "pad") body.append(
+    h("div", { class: "sub-h", text: "Buttons" }),
+    h("div", { class: "grid narrow" }, PAD.map((p, n) => p && h("button", { class: "opt", title: p[0],
+      "aria-pressed": a.t === T.PAD && a.p1 === n ? "true" : "false", onclick: () => set(A(T.PAD, n)) }, PAD_SHORT[n] || p[0]))),
+    h("p", { class: "note", text: "The pad adds a gamepad (Xbox controller) to your computer as soon as any action uses it, and reconnects once to do so." }));
+  else if (cat === "device") body.append(deviceEditor(a, set));
+  else body.append(h("p", { class: "note", style: "margin:0", text: opts.allowNone ? "Holding does the same as pressing." : "This control does nothing." }));
+
+  wrap.append(h("div", { class: "picker" }, seg, body));
+  return wrap;
+}
+
+let recording = false;
+function keyEditor(a, set) {
+  const isKey = a.t === T.KEY, mods = isKey ? a.p1 : 0, code = isKey ? a.p2 : 0;
+  const rec = h("button", { class: "rec" + (recording ? " on" : ""), onclick: () => { recording = !recording; render(); } },
+    recording ? "Press the keys now…" : (isKey && (mods || code) ? keyText(mods, code) : "Click, then press a shortcut"),
+    h("small", { text: recording ? "Esc on its own cancels. Some shortcuts (like Win+L) are kept by the system: use the lists below." : "Records keys exactly as you press them." }));
+  const modRow = h("div", { class: "mods" }, MODS.slice(0, 4).map(m => h("button", { class: "chip", "aria-pressed": mods & m[0] ? "true" : "false",
+    onclick: () => set(A(T.KEY, mods ^ m[0], code)) }, m[1])));
+  const groups = {};
+  for (const k of KEYS.values()) (groups[k.group] ||= []).push(k);
+  const keySel = h("select", { class: "plain", onchange: e => set(A(T.KEY, mods, +e.target.value)) },
+    h("option", { value: 0, text: "No key (modifiers only)", selected: !code }),
+    Object.entries(groups).map(([g, ks]) => h("optgroup", { label: g }, ks.map(k => h("option", { value: k.u, selected: k.u === code, text: k.label })))));
+  return h("div", {}, rec, h("div", { class: "sub-h", text: "Or pick" }), modRow, h("div", { class: "row", style: "margin-top:8px" }, keySel));
+}
+
+function mouseEditor(a, set, opts) {
+  const v = a.t === T.SCROLL ? s8(a.p1) : 0, hz = a.t === T.SCROLL ? s8(a.p2) : 0;
+  const amount = Math.max(1, Math.abs(v || hz || 1));
+  const scrollOpt = (label, sv, sh) => h("button", { class: "opt", "aria-pressed": a.t === T.SCROLL && Math.sign(v) === Math.sign(sv) && Math.sign(hz) === Math.sign(sh) ? "true" : "false",
+    onclick: () => set(A(T.SCROLL, u8(sv * amount), u8(sh * amount))) }, label);
+  const amountBox = stepper(amount, 1, 20, n => {
+    if (a.t === T.SCROLL) set(A(T.SCROLL, u8(Math.sign(v) * n), u8(Math.sign(hz) * n)));
+    else set(A(T.SCROLL, u8(-n), 0));
+  });
+  const mx = a.t === T.MOVE ? s8(a.p1) : 10, my = a.t === T.MOVE ? s8(a.p2) : 0;
+  return h("div", {},
+    h("div", { class: "sub-h", text: "Buttons" }),
+    h("div", { class: "grid" }, MOUSE.map(m => h("button", { class: "opt", "aria-pressed": a.t === T.MOUSE && a.p1 === m[0] ? "true" : "false", onclick: () => set(A(T.MOUSE, m[0])) }, m[1]))),
+    h("div", { class: "sub-h", text: "Scroll" }),
+    h("div", { class: "grid narrow" }, scrollOpt("Up", 1, 0), scrollOpt("Down", -1, 0), scrollOpt("Left", 0, -1), scrollOpt("Right", 0, 1)),
+    h("div", { class: "row", style: "margin-top:8px" }, h("span", { class: "muted small", text: opts.turn ? "Notches per click" : "Notches per press" }), amountBox),
+    h("div", { class: "sub-h", text: "Move the pointer" }),
+    h("div", { class: "row" }, h("span", { class: "muted small", text: "Sideways" }), stepper(mx, -127, 127, n => set(A(T.MOVE, u8(n), u8(my)))),
+      h("span", { class: "muted small", text: "Down" }), stepper(my, -127, 127, n => set(A(T.MOVE, u8(mx), u8(n))))),
+    a.t !== T.MOVE ? h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => set(A(T.MOVE, u8(mx), u8(my))) }, "Use pointer movement")) : null);
+}
+
+function deviceEditor(a, set) {
+  const isP = a.t === T.PROFILE, held = isP && a.p2 === 1;
+  const targets = [...Array.from({ length: L.profiles }, (_, p) => [p, `Profile ${p + 1}`]), [PROF_NEXT, "Next"], [PROF_PREV, "Previous"]];
+  return h("div", {},
+    h("div", { class: "sub-h", text: "Switch profile" }),
+    h("div", { class: "grid narrow" }, targets.map(([p, n]) => h("button", { class: "opt", "aria-pressed": isP && a.p1 === p ? "true" : "false", onclick: () => set(A(T.PROFILE, p, held ? 1 : 0)) }, n))),
+    h("div", { class: "row", style: "margin-top:8px" },
+      h("label", { class: "switch" }, h("input", { type: "checkbox", checked: held, disabled: !isP || a.p1 >= PROF_NEXT, onchange: e => set(A(T.PROFILE, a.p1, e.target.checked ? 1 : 0)) }), h("span")),
+      h("span", { class: "small", text: "Only while held, then switch back" })),
+    h("div", { class: "sub-h", text: "Lights" }),
+    h("div", { class: "grid" }, LIGHTS.map((l, n) => h("button", { class: "opt", "aria-pressed": a.t === T.LIGHT && a.p1 === n ? "true" : "false", onclick: () => set(A(T.LIGHT, n)) }, l[1]))),
+    h("div", { class: "sub-h", text: "Knob axis" }),
+    h("div", { class: "grid" }, h("button", { class: "opt", "aria-pressed": a.t === T.CENTER ? "true" : "false", onclick: () => set(A(T.CENTER)) }, "Center the knob axis")));
+}
+
+function stepper(value, min, max, onSet) {
+  const input = h("input", { type: "number", value, min, max, "aria-label": "amount", onchange: e => onSet(Math.max(min, Math.min(max, +e.target.value || 0))) });
+  return h("span", { class: "stepper" },
+    h("button", { "aria-label": "less", onclick: () => onSet(Math.max(min, value - 1)) }, "−"), input,
+    h("button", { "aria-label": "more", onclick: () => onSet(Math.min(max, value + 1)) }, "+"));
+}
+
+// Shortcut recording
+window.addEventListener("keydown", e => {
+  if (!recording) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !/input|select|textarea/i.test(document.activeElement?.tagName || "")) {
+      e.preventDefault(); e.shiftKey ? redo() : undo();
+    }
+    return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  if (e.code === "Escape" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) { recording = false; render(); return; }
+  let mods = (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+  if (MOD_CODES[e.code]) { mods |= MOD_CODES[e.code]; if (MOD_CODES[e.code] >= 16) mods &= ~(MOD_CODES[e.code] >> 4); return previewRecord(mods); }
+  const k = KEY_BY_CODE.get(e.code);
+  if (!k) { toast(`That key can't be recorded (${e.code}). Pick it from the list instead.`, true); return; }
+  recording = false;
+  applyRecorded(A(T.KEY, mods, k.u));
+}, true);
+window.addEventListener("keyup", e => {
+  if (!recording || !MOD_CODES[e.code]) return;
+  // a modifier pressed and released on its own: record just the modifier
+  if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && pendingMods) { recording = false; applyRecorded(A(T.KEY, pendingMods, 0)); }
+}, true);
+let pendingMods = 0;
+function previewRecord(mods) {
+  pendingMods = mods;
+  const r = document.querySelector(".rec"); if (r) r.firstChild.textContent = keyText(mods, 0) + " + …";
+}
+function applyRecorded(a) {
+  pendingMods = 0;
+  const target = currentPickerTarget();
+  if (target) target(a);
+  render();
+}
+function currentPickerTarget() {
+  if (!openPicker) return null;
+  const m = openPicker.match(/^(press|long)(\d+)$/);
+  if (m) {
+    const i = +m[2];
+    if (m[1] === "press") return a => change(md => md.setAction(prof, i, a), openPicker);
+    return a => change(md => setLongPress(md, i, a, md.findCombo(i, i, prof)), openPicker);
+  }
+  if (openPicker === "right") return a => change(md => md.setAction(prof, L.right, a), "right");
+  if (openPicker === "left") return a => change(md => md.setAction(prof, L.left, a), "left");
+  const c = openPicker.match(/^combo(\d+)$/);
+  if (c) return a => change(md => { const x = md.combos().find(y => y.slot === +c[1]); if (x) md.setCombo(x.slot, { ...x, a }); }, openPicker);
+  return null;
+}
+
+// ---------------------------------------------------------------- combos
+function comboWhen(c) {
+  return c.held === c.trig
+    ? [h("span", { text: "Hold" }), h("span", { class: "kbd", text: L.name(c.held) }), h("span", { class: "muted", text: "alone" })]
+    : [h("span", { text: "Hold" }), h("span", { class: "kbd", text: L.name(c.held) }), h("span", { text: c.trig >= L.buttons ? "and" : "then" }), h("span", { class: "kbd", text: L.name(c.trig) })];
+}
+
+function comboRow(c, compact) {
+  return h("button", { class: "combo", "data-selected": sel.kind === "combo" && sel.slot === c.slot ? "true" : "false",
+      onclick: () => select({ kind: "combo", slot: c.slot }) },
+    h("span", { class: "when" }, compact && c.held !== c.trig ? [h("span", { class: "kbd", text: L.name(c.trig) })] : comboWhen(c)),
+    h("span", { class: "then", text: describe(c.a) }),
+    h("span", { class: "scope", text: c.prof === ALL ? "all profiles" : "" }));
+}
+
+function renderCombos() {
+  const all = model.combos(), mine = all.filter(c => c.prof === prof || c.prof === ALL);
+  $("comboCount").textContent = `${all.length} of ${L.combos} slots used`;
+  const list = $("comboList"); list.replaceChildren();
+  if (!mine.length) list.append(h("div", { class: "empty", text: "No combos in this profile. Add one to make a key do more." }));
+  else mine.forEach(c => list.append(comboRow(c)));
+  $("addCombo").disabled = all.length >= L.combos;
+}
+
+function addCombo(held) {
+  const slot = model.freeSlot();
+  if (slot < 0) { toast(`All ${L.combos} combo slots are used. Remove one first.`, true); return; }
+  const inProf = model.combos().filter(c => c.prof === prof || c.prof === ALL);
+  const taken = (hh, t) => inProf.some(c => c.held === hh && c.trig === t);
+  const helds = held !== undefined ? [held] : [...L.keys.map(k => k.i), L.knob];
+  let pick = null;
+  for (const hh of helds) {
+    const order = [...L.keys.map(k => k.i), L.knob, L.right, L.left].filter(i => i !== hh);
+    const t = order.find(i => !taken(hh, i));
+    if (t !== undefined) { pick = { held: hh, trig: t }; break; }
+  }
+  if (!pick) { const hh = helds[0]; pick = { held: hh, trig: [...L.keys.map(k => k.i), L.knob].find(i => i !== hh) }; }
+  change(m => m.setCombo(slot, { ...pick, prof, a: A(T.NONE) }), "add");
+  sel = { kind: "combo", slot }; openPicker = `combo${slot}`; pickerCat[openPicker] = "key";
+  render();
+}
+
+function renderComboInspector(box) {
+  const c = model.combos().find(x => x.slot === sel.slot);
+  if (!c) { sel = { kind: "input", i: L.keys[0].i }; return renderInspector(); }
+  const body = h("div", { class: "panel-b" });
+  box.append(h("div", { class: "panel-h insp-title" }, h("h2", { text: "Combo" }), h("div", { class: "spacer" }),
+    h("button", { class: "icon-btn", title: "Remove this combo", "aria-label": "Remove this combo", onclick: () => {
+      change(m => m.delCombo(c.slot), "del"); sel = { kind: "input", i: c.held }; render(); } }, svg(ICON_TRASH))), body);
+  const upd = patch => change(m => m.setCombo(c.slot, { ...c, ...patch }), `combo${c.slot}`);
+  const heldSel = h("select", { class: "plain", onchange: e => upd({ held: +e.target.value, trig: c.trig === +e.target.value && c.held !== c.trig ? c.held : c.trig }) },
+    Array.from({ length: L.buttons }, (_, i) => h("option", { value: i, selected: i === c.held, text: L.name(i) })));
+  const trigSel = h("select", { class: "plain", onchange: e => upd({ trig: +e.target.value }) },
+    Array.from({ length: L.inputs }, (_, i) => h("option", { value: i, selected: i === c.trig, text: i === c.held ? `${L.name(i)} alone (long press)` : i >= L.buttons ? `Knob: ${L.name(i).toLowerCase()}` : `Press ${L.name(i)}` })));
+  body.append(field("Hold", null, h("div", { class: "row" }, heldSel)));
+  body.append(field("Then", null, h("div", { class: "row" }, trigSel)));
+  body.append(field("Does", null, actionEditor(`combo${c.slot}`, c.a, a => upd({ a }), { input: c.trig, turn: c.trig >= L.buttons })));
+  const scope = h("div", { class: "seg two" },
+    h("button", { "aria-pressed": c.prof !== ALL ? "true" : "false", onclick: () => upd({ prof: c.prof === ALL ? prof : c.prof }) }, `Profile ${(c.prof === ALL ? prof : c.prof) + 1} only`),
+    h("button", { "aria-pressed": c.prof === ALL ? "true" : "false", onclick: () => upd({ prof: ALL }) }, "All profiles"));
+  body.append(field("Works in", null, scope));
+  const twin = model.combos().find(x => x.slot !== c.slot && x.held === c.held && x.trig === c.trig &&
+    (x.prof === c.prof || x.prof === ALL || c.prof === ALL));
+  if (twin) body.append(h("p", { class: "note", style: "color:var(--danger)", text: `Another combo uses the same controls (${describe(twin.a)}). The one higher in the list wins; change “Then” or remove one.` }));
+  if (c.held !== c.trig && c.trig < L.buttons)
+    body.append(h("p", { class: "note", text: `${L.name(c.held)} still does its own action when pressed on its own; that action is sent when you let go.` }));
+  if (c.held === c.trig) body.append(h("p", { class: "note", text: `Hold ${L.name(c.held)} for ${model.b[S.HOLD] / 100} s. A shorter press does its normal action.` }));
+}
+
+// ---------------------------------------------------------------- lighting
+function renderLighting() {
+  $("lightTitle").textContent = `Profile ${prof + 1} lights`;
+  $("lightHint").textContent = dev ? "Preview. The pad shows the same light right now." : "Preview of the lights.";
+  const e = model.effect(prof), axis = model.action(prof, L.right).t === T.AXIS;
+  const box = $("effects"); box.replaceChildren();
+  EFFECTS.forEach(([k, n, d], idx) => box.append(h("button", { class: "effect", "aria-pressed": idx === e ? "true" : "false",
+    onclick: () => change(m => m.setEffect(prof, idx), "effect") }, h("b", { text: n }), h("small", { text: idx === 5 && !axis ? "Set the knob to a gamepad axis first; until then it's solid." : d }))));
+  const sw = $("swatches"); sw.replaceChildren();
+  const cur = model.color(prof);
+  SWATCHES.forEach(c => sw.append(h("button", { class: "swatch", style: `background:${c}`, title: c, "aria-label": `Color ${c}`,
+    "aria-pressed": c === cur ? "true" : "false", onclick: () => change(m => m.setColor(prof, c), "color") })));
+  sw.append(h("input", { type: "color", value: cur, "aria-label": "Custom color", oninput: ev => change(m => m.setColor(prof, ev.target.value), "color") }));
+  $("brightness").value = model.b[S.BRIGHT]; $("brightnessVal").textContent = Math.round(model.b[S.BRIGHT] / 2.55) + " %";
+  $("speed").value = model.b[S.SPEED]; $("speedVal").textContent = model.b[S.SPEED];
+}
+
+// ---------------------------------------------------------------- settings
+function renderSettings() {
+  const b = model.b;
+  $("optInvert").checked = !!(b[S.FLAGS] & FLAG.INVERT);
+  $("optHalf").checked = !!(b[S.FLAGS] & FLAG.HALF);
+  $("optXbox").checked = !!(b[S.FLAGS] & FLAG.XBOX);
+  $("optDetents").value = b[S.DETENTS]; $("optDetentsVal").textContent = b[S.DETENTS];
+  $("optHold").value = b[S.HOLD]; $("optHoldVal").textContent = (b[S.HOLD] / 100).toFixed(2) + " s";
+  $("optTap").value = b[S.TAP]; $("optTapVal").textContent = b[S.TAP] + " ms";
+  $("optDebounce").value = b[S.DEBOUNCE]; $("optDebounceVal").textContent = b[S.DEBOUNCE] + " ms";
+  const st = $("optStart"); st.replaceChildren(...Array.from({ length: L.profiles }, (_, p) => h("option", { value: p, selected: p === b[S.START], text: `Profile ${p + 1}` })));
+  const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad", "Xbox 360 controller"][L.usb] || "?";
+  $("fwInfo").replaceChildren(
+    h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Detent ${L.fw}` : "Not connected (demo)" }),
+    h("dt", { text: "Board" }), h("dd", { text: `${L.keys.length} keys and a knob, ${L.leds} lights` }),
+    h("dt", { text: "Shows up as" }), h("dd", { text: dev ? usb : "—" }),
+    h("dt", { text: "Profiles, combos" }), h("dd", { text: `${L.profiles} profiles, ${L.combos} combo slots` }));
+  $("bootBtn").disabled = !dev;
+}
+
+function bindSettings() {
+  const flag = (id, f) => $(id).addEventListener("change", e => change(m => { m.b[S.FLAGS] = e.target.checked ? m.b[S.FLAGS] | f : m.b[S.FLAGS] & ~f; }, id));
+  flag("optInvert", FLAG.INVERT); flag("optHalf", FLAG.HALF);
+  const setXbox = on => change(m => { m.b[S.FLAGS] = on ? m.b[S.FLAGS] | FLAG.XBOX : m.b[S.FLAGS] & ~FLAG.XBOX; }, "xbox");
+  $("optXbox").addEventListener("change", e => {
+    if (e.target.checked) { e.target.checked = false; $("xboxConfirm").classList.remove("hidden"); return; }
+    setXbox(false);
+  });
+  $("xboxYes").addEventListener("click", () => {
+    $("xboxConfirm").classList.add("hidden"); setXbox(true);
+    toast(model.usesGamepad() ? "The pad reconnects as an Xbox 360 controller." : "Takes effect once an action uses the gamepad.");
+  });
+  $("xboxNo").addEventListener("click", () => $("xboxConfirm").classList.add("hidden"));
+  const num = (id, off) => $(id).addEventListener("input", e => change(m => { m.b[off] = +e.target.value; }, id));
+  num("optDetents", S.DETENTS); num("optHold", S.HOLD); num("optTap", S.TAP); num("optDebounce", S.DEBOUNCE);
+  num("brightness", S.BRIGHT); num("speed", S.SPEED);
+  $("optStart").addEventListener("change", e => change(m => { m.b[S.START] = +e.target.value; }, "start"));
+}
+
+// =============================================================================== wiring
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  tab = t.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t ? "true" : "false"));
+  ["controls", "lighting", "settings"].forEach(v => $("view-" + v).classList.toggle("hidden", v !== tab));
+  recording = false;
+  render();
+}));
+$("connect").addEventListener("click", connect);
+$("bannerBtn").addEventListener("click", connect);
+$("undo").addEventListener("click", undo);
+$("redo").addEventListener("click", redo);
+$("addCombo").addEventListener("click", () => addCombo());
+$("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(model.toJSON(), null, 2)], { type: "application/json" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: "detent-settings.json" });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    const next = model.clone(); next.fromJSON(j);
+    change(m => { m.b = next.b; }, "import");
+    toast("Settings loaded from " + f.name);
+  } catch (err) { toast("Couldn't load that file: " + err.message, true); }
+});
+$("factoryBtn").addEventListener("click", () => $("factoryConfirm").classList.remove("hidden"));
+$("factoryNo").addEventListener("click", () => $("factoryConfirm").classList.add("hidden"));
+$("factoryYes").addEventListener("click", () => {
+  $("factoryConfirm").classList.add("hidden");
+  change(m => { m.b = factory(L).b; }, "factory");
+  toast("Factory settings restored");
+});
+$("bootBtn").addEventListener("click", async () => {
+  try { await command(CMD.BOOT, 0, [], false); toast("The pad is in update mode now. Run flash.bat within 10 seconds."); } catch (e) { fail(e); }
+});
+bindSettings();
+
+if ("hid" in navigator) {
+  navigator.hid.addEventListener("disconnect", e => { if (e.device === dev) detach(); });
+  navigator.hid.addEventListener("connect", e => {
+    if (!dev && e.device.collections.some(c => c.usagePage === PAGE)) setTimeout(() => attach(e.device), 300);
+  });
+  navigator.hid.getDevices().then(list => {
+    const d = list.find(x => x.vendorId === VID && x.productId === PID && x.collections.some(c => c.usagePage === PAGE));
+    if (d) attach(d);
+  });
+}
+window.addEventListener("beforeunload", e => { if (dev && (needSave || pushing)) { e.preventDefault(); e.returnValue = ""; } });
+setSync("off");
+render();
 </script>
 </body>
 </html>

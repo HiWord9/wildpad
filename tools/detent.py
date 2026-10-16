@@ -80,7 +80,7 @@ def _keycodes():
               "home": 0x4A, "pageup": 0x4B, "delete": 0x4C, "end": 0x4D, "pagedown": 0x4E,
               "right": 0x4F, "left": 0x50, "down": 0x51, "up": 0x52, "numlock": 0x53,
               "kp-slash": 0x54, "kp-star": 0x55, "kp-minus": 0x56, "kp-plus": 0x57,
-              "kp-enter": 0x58, "kp-period": 0x63, "menu": 0x65})
+              "kp-enter": 0x58, "kp-period": 0x63, "iso-backslash": 0x64, "menu": 0x65})
     k.update({f"f{i}": 0x39 + i for i in range(1, 13)})
     k.update({f"f{i}": 0x68 + i - 13 for i in range(13, 25)})
     k.update({f"kp{i}": 0x58 + i for i in range(1, 10)})

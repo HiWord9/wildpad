@@ -13,7 +13,8 @@
 //  - configuration over a vendor HID feature report, stored in Data-Flash
 //
 // Plug in holding button BOARD_BOOT_BUTTON   -> USB bootloader
-// Plug in holding button BOARD_RESCUE_BUTTON -> factory settings until unplugged
+// Plug in holding button BOARD_RESCUE_BUTTON -> without the Xbox 360 identity, so the
+//                                             configurator can reach the pad again
 
 #include "ch554.h"
 #include "config.h"
@@ -794,7 +795,7 @@ void main(void) {
   CLK_config();
   DLY_ms(5);
   SET_load();
-  if(BTN_READ() & BTN_BIT(BOARD_RESCUE_BUTTON)) SET_defaults(cfg);   // not saved
+  if(BTN_READ() & BTN_BIT(BOARD_RESCUE_BUTTON)) CFG_FLAGS &= ~FLAG_XBOX360;   // not saved
   prof = cfg[S_START_PROFILE];
   applySettings();
 

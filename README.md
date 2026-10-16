@@ -1,59 +1,59 @@
 # Detent
 
-**Open firmware for the cheap CH552 “3 keys + knob” macropad that never drops a knob step.**
+**Open firmware and setup app for the cheap CH552 “3 keys + knob” macropad.
+Every knob click counts, every control does what you want.**
 
 
 These little macropads are sold under dozens of brand names with the same PCB: three
 mechanical keys, a clickable rotary knob, three RGB LEDs and a WCH CH552G
 microcontroller (stock USB ID `1189:8890`, configured with an app called
-“MINI KeyBoard”). The stock firmware loses most knob steps as soon as you turn it with
-any speed. Detent replaces it with a firmware that reads the knob properly, plus a
-browser-based setup page.
+“MINI KeyBoard”). The stock firmware loses most knob clicks as soon as you turn it with
+any speed, and its app can only assign a key per button. Detent replaces both.
+
+## What you get
+
+- **No lost clicks.** The knob is read in a 4 kHz timer interrupt, independent of USB,
+  with bounce filtering. Turn it as fast as you like: every click arrives, in the right
+  direction.
+- **Any control, any action.** Each key, the knob press and each turning direction can
+  send a keyboard shortcut, a media key, a mouse click, scrolling, pointer movement or
+  a gamepad button, switch profiles or control the lights.
+- **Combos.** Hold any control and press or turn another to do something else, for
+  example *hold the knob and turn it* for brightness, *hold key 1 and press key 2* for
+  a shortcut. Holding a key on its own (long press) can do something else too.
+- **Three profiles**, each with its own light color and effect; switch with a combo,
+  a key or the app.
+- **Gamepad axis.** The knob can be an absolute gamepad axis (stick or triggers) with a
+  configurable range and hard stop, for racing and steering games. The pad adds an Xbox
+  controller (XInput, built into Windows) automatically when an action needs it, while
+  the keys keep working as a keyboard. Nothing to install, no modes to switch.
+- **Lights.** Off, solid, breathe, rainbow, light on press, or knob position, per profile.
+- **Setup in the browser.** Click a key on the drawing, pick what it does, done: every
+  change takes effect on the pad immediately and is saved on it. Undo, presets, backup
+  to a file. A command-line tool does the same.
+- **Safe to try.** The CH552 bootloader lives in ROM, so a macropad can always be
+  re-flashed.
 
 ## Why
 
 Measured on a stock unit, logging every HID event:
 
-| Action | Detents turned | Events received |
+| Action | Clicks turned | Events received |
 |---|---|---|
 | Slow full turn | 20 | 20 |
 | Fast full turn | 20 | 9, then 7 |
-| Fast full turn counter-clockwise | 20 | 10 CCW **and 2 CW** |
+| Fast full turn counter-clockwise | 20 | 10 counter-clockwise **and 2 clockwise** |
 
 Knob events never arrive closer than 47 ms apart: the stock firmware polls the encoder
-from its main loop and blocks on USB for every step, so it tops out at ~21 detents per
-second and reads the wrong direction beyond that. Every open firmware for this board
-we found reads the encoder the same way. Details in [docs/findings.md](docs/findings.md).
-
-With Detent, the same fast turn delivers exactly 20 events, the same counter-clockwise
-turn delivers 20 counter-clockwise events in half a second, and the PC-side count
-matches the knob's absolute position.
-
-## Features
-
-- **No lost steps.** The knob is decoded in a 4 kHz timer interrupt with a quadrature
-  state table, independent of USB traffic, with bounce filtering. Every detent is
-  queued and replayed as its own key press.
-- **Keyboard mode.** Any key, the knob press and each turn direction can send a key
-  combo, a media key, a mouse button or scroll.
-  - **Fn layer**: hold a key and every key and the knob do something else
-    (by default: hold key 2 and the knob scrolls instead of changing the volume).
-  - **Tap or hold**: a key can do one thing on a quick tap and another when held.
-- **Wheel mode.** The macropad becomes an Xbox controller (XInput, driver built into
-  Windows) *and* keeps its keyboard: the knob is an absolute steering axis with a
-  configurable lock and hard stop, and each key can be a gamepad button, a keyboard key
-  or “re-center”. Works in Rocket League and any other XInput game.
-- **Lighting**: off, react to keys, solid, rainbow or breathing, any color; in wheel
-  mode the LEDs show the steering position.
-- **Setup in the browser**: a live drawing of the macropad, settings stored on the
-  device, export/import to a file. Also a command-line tool.
-- **Safe to try**: the CH552 bootloader lives in ROM, so a macropad can always be
-  re-flashed.
+from its main loop and blocks on USB for every step, so it tops out at about 21 clicks
+per second and reads the wrong direction beyond that. Every open firmware for this
+board we found reads the encoder the same way. Details in [docs/findings.md](docs/findings.md).
+With Detent, the same fast turns deliver exactly 20 events each.
 
 ## Quick start (Windows)
 
 You need [Python 3](https://www.python.org/downloads/) (`winget install Python.Python.3.12`)
-and Chrome or Edge. Download the latest release and unzip it.
+and Chrome, Edge or Opera. Download the latest release and unzip it.
 
 ### 1. Flash
 
@@ -74,46 +74,53 @@ and Chrome or Edge. Download the latest release and unzip it.
 The stock firmware can't be backed up first: the CH552 bootloader has no read command.
 
 **Updates** need no screwdriver: run `flash.bat` and it switches the running firmware
-into the bootloader by itself. If that ever fails, hold **key 1** while plugging in.
+into the bootloader by itself. Windows sometimes fails to start the bootloader driver
+after such a switch; the flasher then simply tries again. If it gives up, unplug the
+pad and plug it back in while holding **key 1**.
 
 ### 2. Set up
 
-Run **`configure.bat`**, click *Connect* and pick the macropad. Click a key or the
-knob on the drawing and choose what it does; changes apply immediately, *Save to
-macropad* keeps them.
+Run **`configure.bat`**. It opens the setup page; click *Connect* and pick the
+macropad (only needed the first time). Click a key or the knob on the drawing and
+choose what it does.
 
-## Using it
+## Factory settings
 
-| Do this | What happens |
+| Profile | Key 1 | Key 2 | Key 3 | Knob press | Knob turn |
+|---|---|---|---|---|---|
+| 1, cyan | previous track | play / pause | next track | mute | volume |
+| 2, amber | Ctrl+C | Ctrl+V | Ctrl+Z | Enter | scroll |
+| 3, violet | left click | middle click | right click | back | scroll sideways |
+
+In every profile: **hold the knob and press key 1, 2 or 3** to switch profiles,
+**hold the knob and turn it** to change the brightness. Because the knob starts combos,
+its own action (mute) is sent when you let go of it.
+
+| Plug in while holding | What happens |
 |---|---|
-| Hold the knob button for 3 s, then release | Toggle keyboard ↔ wheel mode (LEDs fill up yellow; the switch happens on release) |
-| Plug in while holding key 1 | Bootloader, for flashing |
-| Plug in while holding key 3 | Start in keyboard mode once (rescue) |
+| key 1 | bootloader, for flashing |
+| key 3 | starts without the Xbox 360 identity (see Settings), so the setup page can reach it |
 
-**Defaults.** Keyboard mode: previous track / play-pause / next track, knob for
-volume, knob press for mute; hold key 2 and the knob scrolls. Wheel mode: key 1 = RT
-(throttle), key 2 = A (jump), key 3 = B (boost), knob press = re-center, half a turn
-= full lock.
+## Gamepad axis
 
-### Rocket League
+Select the knob, set *Turning sends* to *Gamepad axis*, pick the axis and how many
+clicks it takes from center to full. The pad reconnects once and Windows shows an Xbox
+controller. Set the knob press to *Center the knob axis*, and turn down the game's
+controller deadzone. The knob has 20 clicks per turn, so the axis moves in steps:
+with 10 clicks to full, each click is 10 %. More clicks give finer steps but more
+turning. Combos still work while the knob is an axis: for example *hold key 3 and
+turn* can scroll without moving the axis.
 
-Switch to wheel mode, check the stick moves in the setup page's *Wheel test* (or in
-`joy.cpl`), then start the game; it sees an Xbox controller. Turn *Controller Deadzone*
-down in the game's control settings. The knob has 20 detents per turn, so steering
-moves in steps: with full lock at 10 detents each step is 10 %. A larger value gives
-finer steps but more turning.
-
-### Command line
+## Command line
 
 ```
-python tools/detent.py info
-python tools/detent.py set key1 ctrl+c
-python tools/detent.py set cw wheel:1 --fn
-python tools/detent.py set key2 fn --hold
-python tools/detent.py set key3 pad:x --wheel
-python tools/detent.py option led rainbow
-python tools/detent.py watch
-python tools/detent.py export backup.json
+python tools/detent.py show                       # everything on the pad
+python tools/detent.py set 1 key1 key:ctrl+c      # profile 1, key 1
+python tools/detent.py set 2 right axis:lx:10     # profile 2, knob = stick X
+python tools/detent.py combo add key1 key2 media:mute
+python tools/detent.py light 1 breathe #ff8800
+python tools/detent.py export backup.json         # same format as the setup page
+python tools/detent.py actions                    # all action and key names
 ```
 
 ## Building
@@ -125,33 +132,38 @@ python firmware/test/run_tests.py         # tests in the s51 8051 simulator
 python firmware/test/check_descriptors.py # USB descriptor checks on the binary
 ```
 
-The tests run the real firmware sources in a simulator with the USB layer stubbed out:
-knob decoding (slow, fast, bounce, reversals), the keyboard pipeline (every detent
-becomes exactly one press + release), tap vs. hold, the Fn layer and wheel mode.
-`build.py` works around a packaging bug of SDCC 4.5 on Windows.
+The tests run the real firmware sources in a simulator with the USB layer stubbed
+out: knob decoding (slow, fast, bounce, reversals), every click becoming exactly one
+press and release, combos with keys and the knob, long press, profile switching and
+the gamepad axis. `build.py` works around a packaging bug of SDCC 4.5 on Windows.
 
 ## Other boards
 
-Everything board specific is in [firmware/src/config.h](firmware/src/config.h). The
-settings format has room for up to 6 buttons. See [docs/porting.md](docs/porting.md).
+Everything board specific is in [firmware/src/config.h](firmware/src/config.h); the
+settings layout adapts to the number of keys and the setup page reads it from the
+pad. See [docs/porting.md](docs/porting.md).
 
 ## How it works
 
 | Path | What |
 |---|---|
 | `firmware/src/input.c` | Timer interrupt: quadrature decoder, key debounce, millisecond clock |
-| `firmware/src/main.c` | Action engine: layers, tap/hold, knob step queue, XInput report, LEDs, config protocol |
-| `firmware/src/usbdev.c`, `descr.c` | USB device with three personalities (keyboard, composite wheel, legacy Xbox 360) |
-| `firmware/src/settings.c` | Settings in the 128-byte Data-Flash |
+| `firmware/src/main.c` | Action engine: profiles, combos, long press, knob step queue, gamepad report, lights, configuration protocol |
+| `firmware/src/usbdev.c`, `descr.c` | USB device with three layouts (keyboard; keyboard + gamepad; Xbox 360 controller) |
+| `firmware/src/settings.c` | Settings in the 128-byte Data-Flash, factory settings |
 | `tools/configurator.html` | Setup page (WebHID) |
 | `tools/flash.py`, `winusb.py` | Flasher; talks WinUSB directly on Windows |
 | `tools/detent.py` | Command-line tool |
 
-The wheel mode is a composite USB device: a HID keyboard/mouse, a vendor HID interface
-for configuration and live state, and an XInput interface. A Microsoft OS descriptor
-gives that interface the compatible ID `XUSB10`, so Windows loads its built-in Xbox
-driver for just that interface; nothing has to be installed and no Microsoft IDs are
-borrowed. The configuration protocol is documented in [docs/protocol.md](docs/protocol.md).
+With a gamepad action the pad is a composite USB device: a HID keyboard/mouse, a vendor
+HID interface for configuration and live state, and an XInput interface. A Microsoft
+OS descriptor gives that interface the compatible ID `XUSB10`, so Windows loads its
+built-in Xbox driver for just that interface; nothing has to be installed and no
+Microsoft IDs are borrowed. The configuration protocol and the settings layout are
+documented in [docs/protocol.md](docs/protocol.md).
+
+Settings live in the chip's 128-byte Data-Flash, which limits how much fits: 3
+profiles and 12 combo slots on this board. Text macros don't fit.
 
 ## Credits and license
 
