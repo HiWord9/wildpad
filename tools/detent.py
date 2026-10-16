@@ -201,6 +201,15 @@ class Settings:
     def from_json(self, doc):
         if doc.get("format") != "detent-settings":
             raise ValueError("not a Detent settings file")
+        if "raw" in doc:                                   # exported by the configurator page
+            raw = bytes.fromhex(doc["raw"])
+            if len(raw) != SETTINGS_SIZE:
+                raise ValueError("settings file is for a different firmware version")
+            mode = self.mode
+            self.raw = bytearray(raw)
+            self.mode = mode                               # importing never switches modes
+            return
+        self.raw[0], self.raw[1] = 0xA5, 2                 # magic, settings version
         self.mode = 1 if doc["mode"] == "wheel" else 0
         self.flags = sum(FLAGS[f] for f in doc.get("flags", []))
         for key in ("steer_range", "brightness", "tap_ms", "debounce_ms", "detents_per_rev", "led_hue"):

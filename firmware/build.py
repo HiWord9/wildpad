@@ -1,6 +1,6 @@
-"""Build the TISHRIC Knob firmware with SDCC.
+"""Build the Detent firmware with SDCC.
 
-Usage:  python build.py          -> build/tishric_knob.bin and .hex
+Usage:  python build.py          -> build/detent.bin and .hex
 """
 import os
 import re
