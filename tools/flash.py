@@ -127,7 +127,7 @@ def wait_windows(seconds):
     """Wait for the bootloader and open it through WinUSB. Returns a transport or None."""
     import winusb
     end = time.time() + seconds
-    seen = None
+    seen, last_err = None, None
     while time.time() < end:
         inst = winusb.present_instances(CH_VID, CH_PID)
         if inst:
@@ -142,12 +142,15 @@ def wait_windows(seconds):
             else:
                 try:
                     return winusb.WinUsbDevice(inst[0])
-                except OSError:
-                    pass                                # interface not ready yet
+                except OSError as e:
+                    last_err = e                        # interface not ready yet
         elif seen is not None:
-            print(f"  bootloader went away after {time.time() - seen:.1f} s - enter it again")
-            seen = None
+            print(f"  bootloader went away after {time.time() - seen:.1f} s"
+                  + (f" (could not open it: {last_err})" if last_err else "") + " - enter it again")
+            seen, last_err = None, None
         time.sleep(0.05)
+    if last_err:
+        print(f"  could not open the bootloader: {last_err} - unplug the macropad and try again")
     return None
 
 
