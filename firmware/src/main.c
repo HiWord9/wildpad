@@ -34,6 +34,7 @@ static uint16_t now;
 static int16_t  pos;                      // knob position (detents)
 static int16_t  center;                   // knob position treated as zero
 static int16_t  rel;                      // pos - center, clamped in wheel mode
+static int16_t  lastRel = 0x7FFF;         // rel the cached axis value was computed for
 static uint16_t gestureStart;
 static __bit    gesture;
 static __bit    rebootPending;
@@ -45,6 +46,7 @@ static void applySettings(void) {
   INP_setInvert(cfg.flags & FLAG_INVERT);
   INP_setHalfstep(cfg.flags & FLAG_HALFSTEP);
   INP_setDebounce(cfg.debounce_ms);
+  lastRel = 0x7FFF;                       // steer range may have changed
 }
 
 static void toggleMode(void) {
@@ -61,6 +63,7 @@ static __xdata uint8_t conRep[3]   = {REPORT_ID_CONSUMER, 0, 0};
 static __xdata uint8_t mouseRep[6] = {REPORT_ID_MOUSE, 0, 0, 0, 0, 0};
 static __xdata uint8_t newKbd[9];
 static __bit kbdDirty, conDirty, mouseDirty;
+static __bit recompose;                   // active actions changed since last compose
 static int8_t wheelAcc, hwheelAcc;
 
 // Action currently held by each button, and by the knob step being replayed
@@ -112,6 +115,8 @@ static void addToReport(__xdata action_t* a, uint8_t* nkeys, uint16_t* con, uint
 static void HID_compose(void) {
   uint8_t i, nkeys = 0, mbtn = 0;
   uint16_t con = 0;
+  if(!recompose) return;
+  recompose = 0;
   for(i = 0; i < 9; i++) newKbd[i] = 0;
   for(i = 0; i < BOARD_BUTTONS; i++) addToReport(&active[i], &nkeys, &con, &mbtn);
   addToReport(&knobAct, &nkeys, &con, &mbtn);
@@ -143,12 +148,14 @@ static void HID_send(void) {
 
 static void clearAction(__xdata action_t* a) {
   a->type = ACT_NONE;
+  recompose = 1;
 }
 
 static void copyAction(__xdata action_t* dst, __xdata action_t* src) {
   dst->type = src->type;
   dst->p1 = src->p1;
   dst->p2 = src->p2;
+  recompose = 1;
 }
 
 static uint8_t isHeldType(uint8_t t) {
@@ -375,6 +382,7 @@ static void KNOB_task(void) {
 static __xdata uint8_t padRep[XINPUT_REPORT_LEN];
 static __xdata uint8_t padNew[XINPUT_REPORT_LEN];
 static __bit padDirty;
+static int16_t axisValue;
 
 static __code uint8_t PAD_BITS[17][2] = {      // {byte offset, bit mask}
   {0, 0},
@@ -399,7 +407,11 @@ static void PAD_task(void) {
     if(rel > range)  rel = range;
     if(rel < -range) rel = -range;
   }
-  v = (int16_t)((int32_t)rel * 32767 / range);
+  if(rel != lastRel) {                                          // 32-bit divide is slow
+    lastRel = rel;
+    axisValue = (int16_t)((int32_t)rel * 32767 / range);
+  }
+  v = axisValue;
 
   for(i = 0; i < XINPUT_REPORT_LEN; i++) padNew[i] = 0;
   padNew[1] = XINPUT_REPORT_LEN;

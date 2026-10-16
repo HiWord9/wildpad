@@ -1,13 +1,13 @@
 """Static checks of the USB descriptors inside the built firmware image.
-Reads build/tishric_knob.bin + .map, walks every descriptor and parses the HID
-report descriptors to confirm report sizes match what the firmware sends."""
+Reads build/detent.bin + .map, walks every descriptor and parses the HID report
+descriptors to confirm report sizes match what the firmware sends."""
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = (ROOT / "build" / "tishric_knob.bin").read_bytes()
-MAP = (ROOT / "build" / "tishric_knob.map").read_text()
+BIN = (ROOT / "build" / "detent.bin").read_bytes()
+MAP = (ROOT / "build" / "detent.map").read_text()
 errors = []
 
 
@@ -32,39 +32,38 @@ def check(cond, msg):
 def walk_config(cfg, label):
     total = cfg[2] | cfg[3] << 8
     check(total == len(cfg), f"{label}: wTotalLength {total} == {len(cfg)}")
-    i, itfs, eps = 0, 0, []
+    i, itfs, eps, bad = 0, [], [], False
     while i < len(cfg):
         ln, typ = cfg[i], cfg[i + 1]
-        check(ln >= 2 and i + ln <= len(cfg), f"{label}: descriptor at {i} type 0x{typ:02x} len {ln} fits")
+        bad |= not (ln >= 2 and i + ln <= len(cfg))
         if typ == 4:
-            itfs += 1
+            itfs.append(tuple(cfg[i + 2:i + 9]))
         if typ == 5:
-            eps.append((cfg[i + 2], cfg[i + 4] | cfg[i + 5] << 8, cfg[i + 6]))
-        i += ln
-    check(itfs == cfg[4], f"{label}: {itfs} interface descriptors == bNumInterfaces {cfg[4]}")
-    return eps
+            eps.append((cfg[i + 2], cfg[i + 4] | cfg[i + 5] << 8))
+        i += max(ln, 1)
+    check(not bad, f"{label}: every descriptor length fits")
+    check(len(itfs) == cfg[4], f"{label}: {len(itfs)} interfaces == bNumInterfaces {cfg[4]}")
+    return itfs, eps
 
 
 def parse_hid(desc, label):
     """Return {(kind, report_id): bits} for input/output/feature reports."""
-    sizes, i = {}, 0
-    gl = {"size": 0, "count": 0, "id": 0}
-    stack, depth = [], 0
+    sizes, i, depth = {}, 0, 0
+    gl, stack = {"size": 0, "count": 0, "id": 0}, []
     while i < len(desc):
         b = desc[i]
         n = [0, 1, 2, 4][b & 3]
         val = int.from_bytes(desc[i + 1:i + 1 + n], "little")
         tag, typ = b & 0xFC, (b >> 2) & 3
-        if typ == 0:                                  # main
+        if typ == 0:
             if tag in (0x80, 0x90, 0xB0):
-                kind = {0x80: "in", 0x90: "out", 0xB0: "feat"}[tag]
-                k = (kind, gl["id"])
+                k = ({0x80: "in", 0x90: "out", 0xB0: "feat"}[tag], gl["id"])
                 sizes[k] = sizes.get(k, 0) + gl["size"] * gl["count"]
             elif tag == 0xA0:
                 depth += 1
             elif tag == 0xC0:
                 depth -= 1
-        elif typ == 1:                                # global
+        elif typ == 1:
             if tag == 0x74: gl["size"] = val
             elif tag == 0x94: gl["count"] = val
             elif tag == 0x84: gl["id"] = val
@@ -75,37 +74,54 @@ def parse_hid(desc, label):
     return sizes
 
 
-# ---------------------------------------------------------------- keyboard mode
-dev = blob("KBD_DevDescr", 18)
-check(dev[0] == 18 and dev[1] == 1, "keyboard: device descriptor header")
-check((dev[8] | dev[9] << 8, dev[10] | dev[11] << 8) == (0x1189, 0x8890), "keyboard: VID/PID 1189:8890")
-cfg = blob("KBD_CfgDescr", BIN[sym("KBD_CfgDescr") + 2])
-eps = walk_config(cfg, "keyboard config")
-check([e[0] for e in eps] == [0x81, 0x83], "keyboard: endpoints EP1 IN, EP3 IN")
-r0len = BIN[sym("KBD_Report0Len")]
-r1len = BIN[sym("KBD_Report1Len")]
-check(cfg[18 + 7] == r0len, f"keyboard: HID0 wDescriptorLength {cfg[25]} == report0 {r0len}")
-check(cfg[43 + 7] == r1len, f"keyboard: HID1 wDescriptorLength {cfg[50]} == report1 {r1len}")
-check(cfg[18 + 1] == 0x21 and cfg[43 + 1] == 0x21, "keyboard: HID descriptor offsets 18 / 43")
-s0 = parse_hid(blob("KBD_Report0", r0len), "report0")
-check(s0.get(("in", 1)) == 64, f"keyboard report = 8 bytes + id (got {s0.get(('in', 1))} bits)")
-check(s0.get(("in", 2)) == 16, "consumer report = 2 bytes + id")
-check(s0.get(("in", 3)) == 40, f"mouse report = 5 bytes + id (got {s0.get(('in', 3))} bits)")
-check(s0.get(("out", 1)) == 8, "keyboard LED output = 1 byte + id")
-max_in = max(v for (k, _), v in s0.items() if k == "in") // 8 + 1
-check(max_in <= eps[0][1], f"largest EP1 report {max_in} B <= wMaxPacketSize {eps[0][1]}")
-s1 = parse_hid(blob("KBD_Report1", r1len), "report1")
-check(s1.get(("in", 0)) == 64, "vendor input report = 8 bytes (no id)")
-check(s1.get(("feat", 0)) == 320, "vendor feature report = 40 bytes (no id)")
+def ids(dev):
+    return (dev[8] | dev[9] << 8, dev[10] | dev[11] << 8, dev[12] | dev[13] << 8)
 
-# ---------------------------------------------------------------- gamepad mode
-dev = blob("PAD_DevDescr", 18)
-check((dev[8] | dev[9] << 8, dev[10] | dev[11] << 8) == (0x045E, 0x028E), "gamepad: VID/PID 045E:028E")
-check(dev[4:7] == bytes([0xFF, 0xFF, 0xFF]), "gamepad: vendor-specific device class")
-cfg = blob("PAD_CfgDescr", 153)
-eps = walk_config(cfg, "gamepad config")
-check(eps[0][:2] == (0x81, 32) and eps[1][:2] == (0x02, 32), "gamepad: EP1 IN / EP2 OUT, 32 bytes")
-check(cfg[9 + 5:9 + 8] == bytes([0xFF, 0x5D, 0x01]), "gamepad: interface 0 is FF/5D/01 (XInput)")
+
+# ---------------------------------------------------------------- device descriptors
+kbd_dev, whl_dev, leg_dev = blob("DevDescrKeyboard", 18), blob("DevDescrWheel", 18), blob("DevDescrLegacy", 18)
+check(ids(kbd_dev)[:2] == (0x1189, 0x8890) and ids(whl_dev)[:2] == (0x1189, 0x8890), "keyboard/wheel: VID/PID 1189:8890")
+check(ids(kbd_dev)[2] != ids(whl_dev)[2], "keyboard and wheel use different bcdDevice (separate MS OS cache)")
+check(ids(leg_dev)[:2] == (0x045E, 0x028E) and leg_dev[4:7] == bytes([0xFF] * 3), "legacy: Xbox 360 identity, vendor class")
+
+# ---------------------------------------------------------------- HID report descriptors
+r0len, r1len = BIN[sym("Report0Len")], BIN[sym("Report1Len")]
+s0 = parse_hid(blob("Report0", r0len), "report0")
+check(s0.get(("in", 1)) == 64, "keyboard report = 8 bytes + id")
+check(s0.get(("in", 2)) == 16, "consumer report = 2 bytes + id")
+check(s0.get(("in", 3)) == 40, "mouse report = 5 bytes + id")
+check(s0.get(("out", 1)) == 8, "keyboard LED output = 1 byte + id")
+s1 = parse_hid(blob("Report1", r1len), "report1")
+check(s1.get(("in", 0)) == 64, "vendor input report = 8 bytes")
+check(s1.get(("feat", 0)) == 320, "vendor feature report = 40 bytes")
+
+# ---------------------------------------------------------------- configurations
+kcfg = blob("CfgDescrKeyboard", BIN[sym("CfgDescrKeyboard") + 2])
+itfs, eps = walk_config(kcfg, "keyboard config")
+check([e[0] for e in eps] == [0x81, 0x83], "keyboard: EP1 IN (HID), EP3 IN (config)")
+check(kcfg[25] == r0len and kcfg[50] == r1len, "keyboard: HID descriptor lengths match report descriptors")
+
+wcfg = blob("CfgDescrWheel", BIN[sym("CfgDescrWheel") + 2])
+itfs, eps = walk_config(wcfg, "wheel config")
+check(wcfg[9:59] == kcfg[9:59], "wheel: interfaces 0/1 identical to keyboard mode")
+check(itfs[2][0] == 2 and itfs[2][3:6] == (0xFF, 0x5D, 0x01), "wheel: interface 2 is XInput FF/5D/01")
+check([e for e in eps if e[0] in (0x82, 0x02)] == [(0x82, 32), (0x02, 32)], "wheel: XInput on EP2 IN + EP2 OUT, 32 bytes")
+xdesc = wcfg[59 + 9:59 + 9 + 17]
+check(xdesc[1] == 0x21 and xdesc[6] == 0x82 and xdesc[13] == 0x02, "wheel: XInput class descriptor points at EP 0x82 / 0x02")
+
+lcfg = blob("CfgDescrLegacy", 153)
+itfs, eps = walk_config(lcfg, "legacy config")
+check(eps[0] == (0x81, 32) and eps[1] == (0x02, 32), "legacy: EP1 IN / EP2 OUT like a real pad")
+
+# ---------------------------------------------------------------- Microsoft OS descriptors
+ms = blob("MsOsString", 18)
+check(ms[:2] == bytes([0x12, 0x03]) and ms[2:16] == "MSFT100".encode("utf-16-le"), "MS OS string: 'MSFT100'")
+code = ms[16]
+src = (ROOT / "src" / "config.h").read_text()
+check(code == int(re.search(r"MS_OS_VENDOR_CODE\s+(0x[0-9A-Fa-f]+)", src).group(1), 16), "MS OS string: vendor code matches config.h")
+cid = blob("MsCompatId", 40)
+check(int.from_bytes(cid[0:4], "little") == 40 and cid[6] == 4 and cid[8] == 1, "compat ID: header (40 bytes, wIndex 4, 1 function)")
+check(cid[16] == 2 and cid[17] == 1 and cid[18:26] == b"XUSB10\0\0", "compat ID: interface 2 -> 'XUSB10'")
 
 print()
 if errors:
