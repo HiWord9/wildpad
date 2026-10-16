@@ -62,6 +62,16 @@ def present_instances(vid, pid):
     return [i for i in buf[:size.value].split("\0") if i.upper().startswith(tag)]
 
 
+def node_problem(instance):
+    """Windows problem code of a device node (0 = none, 10 = could not start)."""
+    dn, status, problem = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_ulong()
+    if _cfg.CM_Locate_DevNodeW(ctypes.byref(dn), instance, 0) != 0:
+        return 0
+    if _cfg.CM_Get_DevNode_Status(ctypes.byref(status), ctypes.byref(problem), dn, 0) != 0:
+        return 0
+    return problem.value
+
+
 def interface_guid(instance):
     """DeviceInterfaceGUID(s) registered by the WinUSB install (None = no driver)."""
     try:

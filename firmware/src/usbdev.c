@@ -60,33 +60,33 @@ static uint8_t USB_sendDescr(uint8_t len) {
 
 static uint8_t USB_getDescriptor(void) {
   uint8_t idx = setupBuf->wValueL;
-  uint8_t legacy = (USB_personality == USB_LEGACY);
+  uint8_t xbox = (USB_personality == USB_XBOX360);
 
   switch(setupBuf->wValueH) {
     case USB_DESCR_TYP_DEVICE:
-      pDescr = legacy ? DevDescrLegacy : (USB_personality == USB_WHEEL ? DevDescrWheel : DevDescrKeyboard);
+      pDescr = xbox ? DevDescrXbox360 : (USB_personality == USB_GAMEPAD ? DevDescrGamepad : DevDescrKeyboard);
       return USB_sendDescr(18);
     case USB_DESCR_TYP_CONFIG:
-      if(legacy) { pDescr = CfgDescrLegacy; return USB_sendDescr(LEGACY_CFG_LEN); }
-      if(USB_personality == USB_WHEEL) { pDescr = CfgDescrWheel; return USB_sendDescr(WHEEL_CFG_LEN); }
+      if(xbox) { pDescr = CfgDescrXbox360; return USB_sendDescr(XBOX360_CFG_LEN); }
+      if(USB_personality == USB_GAMEPAD) { pDescr = CfgDescrGamepad; return USB_sendDescr(GAMEPAD_CFG_LEN); }
       pDescr = CfgDescrKeyboard;
       return USB_sendDescr(KBD_CFG_LEN);
     case USB_DESCR_TYP_STRING:
       if(idx == MS_OS_STRING_INDEX) {
-        if(USB_personality != USB_WHEEL) return 0xFF;
+        if(USB_personality != USB_GAMEPAD) return 0xFF;
         pDescr = MsOsString;
         return USB_sendDescr(18);
       }
       if(idx >= STR_COUNT) return 0xFF;
-      pDescr = legacy ? LegacyStrings[idx] : Strings[idx];
+      pDescr = xbox ? Xbox360Strings[idx] : Strings[idx];
       return USB_sendDescr(pDescr[0]);
     case USB_DESCR_TYP_REPORT:
-      if(legacy) return 0xFF;
+      if(xbox) return 0xFF;
       if(setupBuf->wIndexL == 0) { pDescr = Report0; return USB_sendDescr(Report0Len); }
       if(setupBuf->wIndexL == 1) { pDescr = Report1; return USB_sendDescr(Report1Len); }
       return 0xFF;
     case USB_DESCR_TYP_HID:
-      if(legacy || setupBuf->wIndexL > 1) return 0xFF;
+      if(xbox || setupBuf->wIndexL > 1) return 0xFF;
       pDescr = CfgDescrKeyboard + (setupBuf->wIndexL ? CFG_HID1_OFFSET : CFG_HID0_OFFSET);
       return USB_sendDescr(9);
     default:
@@ -97,7 +97,7 @@ static uint8_t USB_getDescriptor(void) {
 // HID class requests for interfaces 0 and 1
 static uint8_t USB_classRequest(void) {
   uint8_t i, len;
-  if(USB_personality == USB_LEGACY || SetupIntf > 1) return 0xFF;
+  if(USB_personality == USB_XBOX360 || SetupIntf > 1) return 0xFF;
   switch(SetupReq) {
     case HID_GET_REPORT:
       len = SetupLen > EP0_SIZE ? EP0_SIZE : SetupLen;
@@ -124,10 +124,10 @@ static uint8_t USB_classRequest(void) {
   }
 }
 
-// Vendor requests: only the Microsoft OS extended compatible ID (wheel mode).
+// Vendor requests: only the Microsoft OS extended compatible ID (gamepad layout).
 // Everything else - including Xbox security requests - is stalled.
 static uint8_t USB_vendorRequest(void) {
-  if(USB_personality == USB_WHEEL && SetupReq == MS_OS_VENDOR_CODE &&
+  if(USB_personality == USB_GAMEPAD && SetupReq == MS_OS_VENDOR_CODE &&
      (SetupType & 0x80) && setupBuf->wIndexL == 0x04 && setupBuf->wIndexH == 0) {
     pDescr = MsCompatId;
     return USB_sendDescr(sizeof(MsCompatId));
@@ -341,8 +341,8 @@ void USB_init(uint8_t personality) {
   UEP2_DMA = EP2_ADDR;
   UEP3_DMA = EP3_ADDR;
   UEP4_1_MOD = bUEP1_TX_EN;
-  if(personality == USB_LEGACY)     UEP2_3_MOD = bUEP2_RX_EN;
-  else if(personality == USB_WHEEL) UEP2_3_MOD = bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN;
+  if(personality == USB_XBOX360)     UEP2_3_MOD = bUEP2_RX_EN;
+  else if(personality == USB_GAMEPAD) UEP2_3_MOD = bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN;
   else                              UEP2_3_MOD = bUEP3_TX_EN;
   USB_resetEndpoints();
 
@@ -353,11 +353,30 @@ void USB_init(uint8_t personality) {
   UEP0_T_LEN = 0;
 }
 
-// Drop off the bus (host sees an unplug) - used before a reset into another mode
+// Drop off the bus (host sees an unplug) and put the USB block back into its
+// power-on state - used before a restart. The ROM bootloader does not reset every
+// register itself; leftovers from the gamepad layout (EP2 enabled in both
+// directions) sometimes kept Windows from starting its driver for the bootloader.
 void USB_disconnect(void) {
   IE_USB = 0;
-  USB_CTRL = 0;
+  USB_INT_EN = 0;
+  USB_CTRL = bUC_RESET_SIE | bUC_CLR_ALL;
   UDEV_CTRL = bUD_PD_DIS;
+  USB_DEV_AD = 0;
+  UEP4_1_MOD = 0;
+  UEP2_3_MOD = 0;
+  UEP0_CTRL = 0;
+  UEP1_CTRL = 0;
+  UEP2_CTRL = 0;
+  UEP3_CTRL = 0;
+  UEP4_CTRL = 0;
+  UEP0_T_LEN = 0;
+  UEP1_T_LEN = 0;
+  UEP2_T_LEN = 0;
+  UEP3_T_LEN = 0;
+  UEP4_T_LEN = 0;
+  USB_INT_FG = 0xFF;                          // clear pending flags
+  USB_CTRL = 0;                               // release the SIE reset
 }
 
 static void USB_load(__xdata uint8_t* dst, __xdata uint8_t* src, uint8_t len) {
@@ -365,7 +384,7 @@ static void USB_load(__xdata uint8_t* dst, __xdata uint8_t* src, uint8_t len) {
 }
 
 uint8_t USB_hidReady(void) {
-  return UsbConfig && !ep1Busy && USB_personality != USB_LEGACY;
+  return UsbConfig && !ep1Busy && USB_personality != USB_XBOX360;
 }
 
 void USB_hidSend(__xdata uint8_t* buf, uint8_t len) {
@@ -376,7 +395,7 @@ void USB_hidSend(__xdata uint8_t* buf, uint8_t len) {
 }
 
 uint8_t USB_statusReady(void) {
-  return UsbConfig && !ep3Busy && USB_personality != USB_LEGACY;
+  return UsbConfig && !ep3Busy && USB_personality != USB_XBOX360;
 }
 
 void USB_statusSend(__xdata uint8_t* buf, uint8_t len) {
@@ -386,16 +405,16 @@ void USB_statusSend(__xdata uint8_t* buf, uint8_t len) {
   UEP3_CTRL = UEP3_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
 }
 
-// XInput reports: EP2 IN (TX buffer at EP2_ADDR + 64) in wheel mode, EP1 in legacy
+// XInput reports: EP2 IN (TX buffer at EP2_ADDR + 64) in the gamepad layout, EP1 as Xbox 360
 uint8_t USB_padReady(void) {
   if(!UsbConfig) return 0;
-  if(USB_personality == USB_WHEEL) return !ep2Busy;
-  if(USB_personality == USB_LEGACY) return !ep1Busy;
+  if(USB_personality == USB_GAMEPAD) return !ep2Busy;
+  if(USB_personality == USB_XBOX360) return !ep1Busy;
   return 0;
 }
 
 void USB_padSend(__xdata uint8_t* buf, uint8_t len) {
-  if(USB_personality == USB_LEGACY) {
+  if(USB_personality == USB_XBOX360) {
     USB_load(EP1_buffer, buf, len);
     UEP1_T_LEN = len;
     ep1Busy = 1;

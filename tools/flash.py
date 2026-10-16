@@ -86,12 +86,24 @@ def try_software_bootloader():
                 proto = r[3]
                 break
         dev.send_feature_report(b"\x00" + bytes([8 if proto == 1 else 10, 78]) + bytes(38))
-        print("Running firmware found - switched it to the bootloader.")
+        print("Asked the running firmware to start the USB bootloader.")
         return True
     except Exception:
         return False
     finally:
         dev.close()
+
+
+def wait_for_firmware(seconds):
+    """Wait until the running firmware's configuration interface is back."""
+    hid = need("hid", "hidapi")
+    end = time.time() + seconds
+    while time.time() < end:
+        if any(d.get("usage_page") == 0xFF54 for d in hid.enumerate(0x1189, 0x8890)):
+            time.sleep(0.5)
+            return True
+        time.sleep(0.2)
+    return False
 
 
 def open_zadig():
@@ -139,6 +151,9 @@ def wait_windows(seconds):
                     print("\nThe bootloader has no WinUSB driver yet.")
                     driver_missing()
                     sys.exit("Install the driver, then run flash.bat again.")
+            elif winusb.node_problem(inst[0]) == 10:
+                print("  Windows did not start the bootloader driver this time (code 10)")
+                return None
             else:
                 try:
                     return winusb.WinUsbDevice(inst[0])
@@ -261,8 +276,19 @@ def main():
         input("Press Enter here when Zadig says the driver was installed ...")
 
     t = None
-    if try_software_bootloader():
+    attempts = 8
+    for attempt in range(1, attempts + 1):
+        if not try_software_bootloader():
+            break
         t = wait_for_bootloader(10)
+        if t is not None or attempt == attempts:
+            break
+        # After a jump from the firmware, Windows fails to start the bootloader's
+        # WinUSB driver about every other time (problem code 10, STATUS_UNSUCCESSFUL);
+        # restarting the device needs admin rights, so wait for the bootloader to
+        # time out and jump again.
+        print(f"  trying again ({attempt + 1} of {attempts}) - this takes about 10 s ...")
+        wait_for_firmware(15)
     if t is None:
         print("\nWaiting for the bootloader (60 s) ...")
         print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")

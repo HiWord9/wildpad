@@ -70,58 +70,65 @@ def test_decoder():
         check(got == exp, f"decoder: {name}", f"position {got}, expected {exp}")
 
 
-def test_keyboard():
-    raw = simulate("kbd", [TEST / "test_kbd.c", *FIRMWARE], 0x300, 1 + 5 * 100,
+def test_keys():
+    raw = simulate("keys", [TEST / "test_keys.c", *FIRMWARE], 0x300, 4 + 5 * 100,
                    {"main.c": ["main=fw_main"]})
-    n = raw[0]
-    reps = [raw[1 + 5 * i:6 + 5 * i] for i in range(n)]
-    con = [r for r in reps if r[0] == 2]
-    mouse = [r for r in reps if r[0] == 3]
-    usages = [r[1] | r[2] << 8 for r in con]
+    n, brightness, profile, personality = raw[0], raw[1], raw[2], raw[3]
+    reps = [raw[4 + 5 * i:9 + 5 * i] for i in range(n)]
+    con = [r[1] | r[2] << 8 for r in reps if r[0] == 2]
+    kbd = [(r[1], r[2]) for r in reps if r[0] == 1]
+    wheel = [int.from_bytes(bytes([r[2]]), "little", signed=True) for r in reps if r[0] == 3]
 
-    # A: 35 volume taps, each followed by a release
-    knob = usages[:70]
+    check(personality == 0, "keys: no gamepad action -> plain keyboard USB layout")
+    knob = con[:70]
+    check(len(knob) == 70 and all(u == 0 for u in knob[1::2]),
+          "keys: every knob click is a press + release pair")
     taps = knob[0::2]
-    check(all(u == 0 for u in knob[1::2]) and len(knob) == 70,
-          "keyboard: every knob step is a press + release pair")
-    check(taps == [0xE9] * 30 + [0xEA] * 5, "keyboard: 30 fast CW + 5 CCW -> 30 vol-up, 5 vol-down",
+    check(taps == [0xE9] * 30 + [0xEA] * 5, "keys: 30 fast CW + 5 CCW clicks -> 30 volume up, 5 down",
           f"{taps.count(0xE9)} up, {taps.count(0xEA)} down")
-    # B: short press of key 2 -> play/pause tap (sent on release)
-    check(usages[70:72] == [0xCD, 0], "keyboard: short press of key 2 -> play/pause tap",
-          f"got {[hex(u) for u in usages[70:72]]}")
-    # C: hold key 2 (Fn) + 3 CW detents -> 3 notches of scroll, no volume
-    scroll = sum(int.from_bytes(bytes([r[4]]), "little", signed=True) for r in mouse)
-    check(scroll == 3 and len(usages) == 72, "keyboard: Fn (hold key 2) + 3 detents -> 3 scroll notches",
-          f"scroll {scroll}, extra consumer reports {len(usages) - 72}")
+    check(con[70:72] == [0xE2, 0], "keys: short knob press -> mute on release",
+          f"got {[hex(u) for u in con[70:72]]}")
+    check(brightness == 128 + 3 * 16 and len(con) == 72,
+          "keys: hold knob + 3 clicks -> brightness up 3 steps, no volume, no mute",
+          f"brightness {brightness}, extra media reports {len(con) - 72}")
+    check(profile == 1, "keys: hold knob + key 2 -> profile 2", f"profile index {profile}")
+    check(kbd[:2] == [(1, 0x06), (0, 0)], "keys: key 1 in profile 2 -> Ctrl+C", f"{kbd[:2]}")
+    check(sum(wheel) == -1, "keys: knob click in profile 2 -> one notch of scrolling down",
+          f"wheel {wheel}")
 
 
-def test_wheel():
-    raw = simulate("whl", [TEST / "test_wheel.c", *FIRMWARE], 0x300, 4 + 6 * 90,
+def test_gamepad():
+    raw = simulate("pad", [TEST / "test_gamepad.c", *FIRMWARE], 0x300, 0x13 + 6 * 60,
                    {"main.c": ["main=fw_main"], "settings.c": ["SET_load=SET_load_real"]})
-    n, personality, key = raw[0], raw[2], raw[3]
-    logs = [raw[4 + 6 * i:10 + 6 * i] for i in range(n)]
+    n, nkeys, personality = raw[0], raw[1], raw[2]
+    keys = list(raw[3:3 + nkeys])
+    logs = [raw[0x13 + 6 * i:0x13 + 6 * i + 6] for i in range(n)]
     lx = [int.from_bytes(r[0:2], "little", signed=True) for r in logs]
-    check(personality == 1, "wheel: runs as the composite keyboard + XInput device")
+    check(personality == 1, "gamepad: an axis action adds the gamepad (keyboard + XInput layout)")
     trunc = lambda k: int(32767 * k / 10)          # C integer division truncates toward 0
-    steps = [trunc(k) for k in range(1, 11)]
-    check(lx[1:11] == steps, "wheel: 10 CW detents -> 10 % steps up to full right lock",
-          f"{lx[1:11]}")
-    left = lx[11:31]
-    check(left == [trunc(k) for k in range(9, -11, -1)],
-          "wheel: 3 extra CW ignored (hard stop), 20 CCW -> full left lock", f"{left[:3]}...{left[-2:]}")
-    check(lx[31] == 0, "wheel: knob press re-centers", f"LX {lx[31]}")
-    rt = [r[5] for r in logs[32:]]
-    a_btn = [r[3] & 0x10 for r in logs[32:]]
-    check(255 in rt, "wheel: key 1 -> right trigger")
-    check(any(a_btn), "wheel: key 2 -> A button")
-    check(key == 0x04, "wheel: key 3 -> keyboard 'a' while in wheel mode", f"keycode 0x{key:02x}")
+    check(lx[1:11] == [trunc(k) for k in range(1, 11)],
+          "gamepad: 10 CW clicks -> 10 % steps up to full right lock", f"{lx[1:11]}")
+    check(lx[11:31] == [trunc(k) for k in range(9, -11, -1)],
+          "gamepad: 3 extra CW ignored (hard stop), 20 CCW -> full left lock",
+          f"{lx[11:14]}...{lx[29:31]}")
+    check(lx[31] == 0, "gamepad: knob press -> center", f"LX {lx[31]}")
+    rest = logs[32:]
+    rt = [r[5] for r in rest]
+    check(rt[:2] == [255, 0], "gamepad: short press of key 1 -> RT tap", f"RT {rt}")
+    check(any(r[3] & 0x10 for r in rest), "gamepad: key 2 -> A button")
+    check(all(v == 0 for v in lx[31:]), "gamepad: knob turned while key 3 held -> stick stays centered",
+          f"LX after center {sorted(set(lx[31:]))}")
+    check(keys[:4] == [0x05, 0, 0x05, 0], "gamepad: hold key 3 + 2 clicks -> 'b' twice, no 'a'",
+          f"keys {[hex(k) for k in keys]}")
+    check(keys[4:6] == [0x04, 0], "gamepad: short press of key 3 -> 'a'")
+    check(keys[6:8] == [0x06, 0] and rt.count(255) == 1, "gamepad: long press of key 1 -> 'c', no RT")
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     test_decoder()
-    test_keyboard()
-    test_wheel()
+    test_keys()
+    test_gamepad()
     print(f"\n{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 

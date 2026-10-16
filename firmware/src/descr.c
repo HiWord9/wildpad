@@ -16,8 +16,8 @@
   LO(vid), HI(vid), LO(pid), HI(pid), LO(bcd), HI(bcd), 1, 2, 3, 1 }
 
 __code uint8_t DevDescrKeyboard[18] = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_KEYBOARD, 0x0200, 0x00);
-__code uint8_t DevDescrWheel[18]    = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_WHEEL,    0x0200, 0x00);
-__code uint8_t DevDescrLegacy[18]   = DEV_DESCR(LEGACY_VENDOR_ID, LEGACY_PRODUCT_ID, LEGACY_BCD, 0x0200, 0xFF);
+__code uint8_t DevDescrGamepad[18]    = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_GAMEPAD,    0x0200, 0x00);
+__code uint8_t DevDescrXbox360[18]   = DEV_DESCR(XBOX360_VENDOR_ID, XBOX360_PRODUCT_ID, XBOX360_BCD, 0x0200, 0xFF);
 
 // ===================================================================================
 // HID report descriptors
@@ -83,8 +83,8 @@ __code uint8_t CfgDescrKeyboard[KBD_CFG_LEN] = {
   HID_INTERFACES
 };
 
-__code uint8_t CfgDescrWheel[WHEEL_CFG_LEN] = {
-  CFG_HEADER(WHEEL_CFG_LEN, 3),
+__code uint8_t CfgDescrGamepad[GAMEPAD_CFG_LEN] = {
+  CFG_HEADER(GAMEPAD_CFG_LEN, 3),
   HID_INTERFACES,
   // Interface 2: XInput (bound to xusb22 through the XUSB10 compatible ID)
   0x09, 0x04, 0x02, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
@@ -94,7 +94,7 @@ __code uint8_t CfgDescrWheel[WHEEL_CFG_LEN] = {
   0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08            // EP2 OUT (rumble / LED)
 };
 
-__code uint8_t CfgDescrLegacy[LEGACY_CFG_LEN] = {
+__code uint8_t CfgDescrXbox360[XBOX360_CFG_LEN] = {
   0x09, 0x02, 0x99, 0x00, 0x04, 0x01, 0x00, 0xA0, 0xFA,
   // Interface 0: control data (XInput)
   0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
@@ -120,7 +120,7 @@ __code uint8_t CfgDescrLegacy[LEGACY_CFG_LEN] = {
 };
 
 // ===================================================================================
-// Microsoft OS 1.0 descriptors (wheel mode only)
+// Microsoft OS 1.0 descriptors (gamepad layout only)
 // ===================================================================================
 __code uint8_t MsOsString[18] = {
   0x12, 0x03, 'M', 0, 'S', 0, 'F', 0, 'T', 0, '1', 0, '0', 0, '0', 0, MS_OS_VENDOR_CODE, 0x00
@@ -161,7 +161,7 @@ __code uint8_t* __code Strings[STR_COUNT] = {
   (__code uint8_t*)StrSer,  (__code uint8_t*)StrItf
 };
 
-__code uint8_t* __code LegacyStrings[STR_COUNT] = {
+__code uint8_t* __code Xbox360Strings[STR_COUNT] = {
   (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrPadProd,
   (__code uint8_t*)StrPadSer, (__code uint8_t*)StrPadSec
 };

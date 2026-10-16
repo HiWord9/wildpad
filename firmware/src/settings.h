@@ -1,59 +1,93 @@
 // ===================================================================================
 // Persistent settings (CH552 Data-Flash, 128 bytes)
 // ===================================================================================
-// This struct is exchanged byte for byte with the configurator, so its layout is part
+// This block is exchanged byte for byte with the configurator, so its layout is part
 // of the configuration protocol (docs/protocol.md). Keep tools/detent.py and
 // tools/configurator.html in sync when changing it, and bump SETTINGS_VERSION.
+//
+// Inputs are numbered: buttons 0 .. BOARD_BUTTONS-1, then knob right, knob left.
+// Every profile maps each input to one action. Combos are a shared list of
+// "while input H is held, input T does action A" entries; H == T means
+// "long press of H". A combo belongs to one profile or to all of them.
 
 #pragma once
 #include <stdint.h>
+#include "config.h"
 
 #define SETTINGS_MAGIC      0xA5
-#define SETTINGS_VERSION    2
-#define SETTINGS_SIZE       104
-#define MAX_BUTTONS         6           // layout room; the board uses BOARD_BUTTONS
-#define N_SLOTS             (MAX_BUTTONS + 2)
-#define SLOT_CW             MAX_BUTTONS     // knob clockwise
-#define SLOT_CCW            (MAX_BUTTONS + 1)
+#define SETTINGS_VERSION    3
+#define SETTINGS_SIZE       128
 
-// Device modes
-#define MODE_KEYBOARD       0
-#define MODE_WHEEL          1
+#define N_INPUTS            (BOARD_BUTTONS + 2)
+#define IN_RIGHT            BOARD_BUTTONS           // knob turned clockwise
+#define IN_LEFT             (BOARD_BUTTONS + 1)     // knob turned counter-clockwise
 
-// flags
+#define PROFILE_HEAD        4                       // r, g, b, light effect
+#define PROFILE_SIZE        (PROFILE_HEAD + 3 * N_INPUTS)
+#define PROFILES_OFFSET     12
+#define COMBOS_OFFSET       (PROFILES_OFFSET + N_PROFILES * PROFILE_SIZE)
+#define COMBO_SIZE          4
+#define N_COMBOS            ((SETTINGS_SIZE - 1 - COMBOS_OFFSET) / COMBO_SIZE)
+
+#if PROFILES_OFFSET + 3 * PROFILE_SIZE + 8 * COMBO_SIZE <= SETTINGS_SIZE - 1
+  #define N_PROFILES        3
+#elif PROFILES_OFFSET + 2 * PROFILE_SIZE + 6 * COMBO_SIZE <= SETTINGS_SIZE - 1
+  #define N_PROFILES        2
+#else
+  #define N_PROFILES        1
+#endif
+
+// Header bytes
+#define S_MAGIC             0
+#define S_VERSION           1
+#define S_FLAGS             2
+#define S_BRIGHTNESS        3           // 0..255
+#define S_HOLD_10MS         4           // long press / combo threshold, 10 ms units
+#define S_DEBOUNCE_MS       5           // 1..30
+#define S_TAP_MS            6           // length of a tapped key, 1..50
+#define S_DETENTS           7           // clicks per turn (drawing only)
+#define S_START_PROFILE     8           // profile after power-up
+#define S_LED_SPEED         9           // 1 slow .. 10 fast
+#define S_CHECKSUM          (SETTINGS_SIZE - 1)
+
+// S_FLAGS
 #define FLAG_INVERT         0x01        // swap knob direction
 #define FLAG_HALFSTEP       0x02        // encoder rests at every half quadrature cycle
-#define FLAG_CLAMP          0x04        // wheel: hard stop at full lock (no wind-up)
-#define FLAG_LEGACY_PAD     0x08        // wheel: plain Xbox 360 identity (no config/keys)
-#define FLAG_NO_GESTURE     0x10        // disable "hold knob 3 s" mode switch
+#define FLAG_XBOX360        0x04        // appear as a plain Xbox 360 controller (no keys)
 
-// LED modes
+// Light effects (per profile)
 #define LED_OFF             0
-#define LED_REACTIVE        1           // flash on key press / knob turn
-#define LED_STATIC          2
+#define LED_SOLID           1
+#define LED_BREATHE         2
 #define LED_RAINBOW         3
-#define LED_BREATHE         4
-
-// Wheel axis
-#define AXIS_LX             0
-#define AXIS_LY             1
-#define AXIS_RX             2
-#define AXIS_RY             3
-#define AXIS_TRIGGERS       4           // left of center -> LT, right -> RT
+#define LED_PRESS           4           // keys light up while pressed, fade out
+#define LED_STEERING        5           // show the knob axis position
+#define LED_LAST            LED_STEERING
 
 // Action types {type, p1, p2}
 #define ACT_NONE            0
 #define ACT_KEY             1           // p1 = modifier bits, p2 = HID keycode
-#define ACT_CONSUMER        2           // p1 | p2 << 8 = consumer usage
+#define ACT_MEDIA           2           // p1 | p2 << 8 = consumer usage
 #define ACT_MOUSE_BTN       3           // p1 = button bits (1 L, 2 R, 4 M, 8 back, 16 fwd)
-#define ACT_WHEEL           4           // p1 = int8 vertical scroll
-#define ACT_HWHEEL          5           // p1 = int8 horizontal scroll
-#define ACT_PAD             6           // p1 = PAD_* (wheel mode)
-#define ACT_RECENTER        7           // wheel mode: knob position becomes center
-#define ACT_FN              8           // keyboard mode: Fn layer while held
-#define ACT_MODE            9           // toggle keyboard / wheel mode
+#define ACT_SCROLL          4           // p1 = int8 vertical, p2 = int8 horizontal
+#define ACT_MOUSE_MOVE      5           // p1 = int8 x, p2 = int8 y
+#define ACT_PAD_BTN         6           // p1 = PAD_*
+#define ACT_AXIS            7           // knob only: p1 = AXIS_* | AXIS_FREE, p2 = clicks to full
+#define ACT_CENTER          8           // knob axis position becomes center
+#define ACT_PROFILE         9           // p1 = profile or PROF_NEXT / PROF_PREV, p2 = PROF_*
+#define ACT_LIGHT           10          // p1 = LIGHT_*
+#define ACT_LAST            ACT_LIGHT
 
-// Gamepad buttons for ACT_PAD
+#define PROF_NEXT           0xF0
+#define PROF_PREV           0xF1
+#define PROF_SWITCH         0           // p2: switch and stay
+#define PROF_WHILE_HELD     1           // p2: only while the input is held
+
+#define LIGHT_TOGGLE        0
+#define LIGHT_BRIGHTER      1
+#define LIGHT_DIMMER        2
+
+// Gamepad buttons for ACT_PAD_BTN
 #define PAD_A               1
 #define PAD_B               2
 #define PAD_X               3
@@ -72,39 +106,36 @@
 #define PAD_DRIGHT          16
 #define PAD_GUIDE           17
 
+// Axes for ACT_AXIS (low bits of p1)
+#define AXIS_LX             0
+#define AXIS_LY             1
+#define AXIS_RX             2
+#define AXIS_RY             3
+#define AXIS_TRIGGERS       4           // left of center -> LT, right -> RT
+#define AXIS_MASK           0x0F
+#define AXIS_FREE           0x80        // no hard stop: turning past full lock winds up
+
+// Combo entry: [held << 4 | trigger, profile << 5 | type, p1, p2]
+#define COMBO_EMPTY         0xFF        // first byte of an unused entry
+#define COMBO_ALL_PROFILES  7
+
 typedef struct {
   uint8_t type;
   uint8_t p1;
   uint8_t p2;
 } action_t;
 
-typedef struct {
-  uint8_t  magic;                 // 0
-  uint8_t  version;               // 1
-  uint8_t  mode;                  // 2   MODE_*
-  uint8_t  flags;                 // 3   FLAG_*
-  uint8_t  steer_range;           // 4   detents from center to full lock (1..100)
-  uint8_t  brightness;            // 5   0..255
-  uint8_t  tap_ms;                // 6   key press length for knob steps / taps (1..50)
-  uint8_t  debounce_ms;           // 7   1..30
-  uint8_t  hold_10ms;             // 8   tap/hold threshold in 10 ms units (10..100)
-  uint8_t  detents_per_rev;       // 9   informational, for the configurator (8..100)
-  uint8_t  led_mode;              // 10  LED_*
-  uint8_t  led_hue;               // 11  0..191 color wheel, 192..255 white
-  uint8_t  axis;                  // 12  AXIS_*
-  uint8_t  reserved0[3];          // 13
-  action_t base[N_SLOTS];         // 16  keyboard mode: buttons, then CW, CCW
-  action_t fn[N_SLOTS];           // 40  keyboard mode while an ACT_FN key is held
-  action_t hold[MAX_BUTTONS];     // 64  keyboard mode: action when held (none = off)
-  action_t wheel[MAX_BUTTONS];    // 82  wheel mode button actions
-  uint8_t  reserved1[3];          // 100
-  uint8_t  checksum;              // 103 sum of bytes 0..102
-} settings_t;
+extern __xdata uint8_t cfg[SETTINGS_SIZE];
 
-extern __xdata settings_t cfg;
+#define CFG_FLAGS           cfg[S_FLAGS]
+#define PROFILE(p)          (cfg + PROFILES_OFFSET + (p) * PROFILE_SIZE)
+#define ACTION(p, i)        ((__xdata action_t*)(PROFILE(p) + PROFILE_HEAD + 3 * (i)))
+#define COMBO(n)            (cfg + COMBOS_OFFSET + COMBO_SIZE * (n))
 
 void SET_defaults(__xdata uint8_t* dst);
 void SET_load(void);
 void SET_save(void);
 uint8_t SET_checksum(__xdata uint8_t* p);
 uint8_t SET_valid(__xdata uint8_t* p);
+uint8_t SET_usesGamepad(__xdata uint8_t* p);
+void SET_saveByte(uint8_t idx, uint8_t val);

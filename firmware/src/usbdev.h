@@ -8,8 +8,8 @@
 
 // Device personalities (see descr.h)
 #define USB_KEYBOARD    0
-#define USB_WHEEL       1
-#define USB_LEGACY      2
+#define USB_GAMEPAD       1
+#define USB_XBOX360      2
 
 // Endpoint buffers at the bottom of XRAM (variables start at XRAM_LOC = 0x0140).
 // EP2 has RX at EP2_ADDR and TX at EP2_ADDR + 64 when both directions are enabled.

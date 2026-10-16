@@ -79,10 +79,10 @@ def ids(dev):
 
 
 # ---------------------------------------------------------------- device descriptors
-kbd_dev, whl_dev, leg_dev = blob("DevDescrKeyboard", 18), blob("DevDescrWheel", 18), blob("DevDescrLegacy", 18)
-check(ids(kbd_dev)[:2] == (0x1189, 0x8890) and ids(whl_dev)[:2] == (0x1189, 0x8890), "keyboard/wheel: VID/PID 1189:8890")
-check(ids(kbd_dev)[2] != ids(whl_dev)[2], "keyboard and wheel use different bcdDevice (separate MS OS cache)")
-check(ids(leg_dev)[:2] == (0x045E, 0x028E) and leg_dev[4:7] == bytes([0xFF] * 3), "legacy: Xbox 360 identity, vendor class")
+kbd_dev, whl_dev, leg_dev = blob("DevDescrKeyboard", 18), blob("DevDescrGamepad", 18), blob("DevDescrXbox360", 18)
+check(ids(kbd_dev)[:2] == (0x1189, 0x8890) and ids(whl_dev)[:2] == (0x1189, 0x8890), "keyboard/gamepad: VID/PID 1189:8890")
+check(ids(kbd_dev)[2] != ids(whl_dev)[2], "keyboard and gamepad layouts use different bcdDevice (separate MS OS cache)")
+check(ids(leg_dev)[:2] == (0x045E, 0x028E) and leg_dev[4:7] == bytes([0xFF] * 3), "xbox360: Xbox 360 identity, vendor class")
 
 # ---------------------------------------------------------------- HID report descriptors
 r0len, r1len = BIN[sym("Report0Len")], BIN[sym("Report1Len")]
@@ -101,17 +101,17 @@ itfs, eps = walk_config(kcfg, "keyboard config")
 check([e[0] for e in eps] == [0x81, 0x83], "keyboard: EP1 IN (HID), EP3 IN (config)")
 check(kcfg[25] == r0len and kcfg[50] == r1len, "keyboard: HID descriptor lengths match report descriptors")
 
-wcfg = blob("CfgDescrWheel", BIN[sym("CfgDescrWheel") + 2])
-itfs, eps = walk_config(wcfg, "wheel config")
-check(wcfg[9:59] == kcfg[9:59], "wheel: interfaces 0/1 identical to keyboard mode")
-check(itfs[2][0] == 2 and itfs[2][3:6] == (0xFF, 0x5D, 0x01), "wheel: interface 2 is XInput FF/5D/01")
-check([e for e in eps if e[0] in (0x82, 0x02)] == [(0x82, 32), (0x02, 32)], "wheel: XInput on EP2 IN + EP2 OUT, 32 bytes")
+wcfg = blob("CfgDescrGamepad", BIN[sym("CfgDescrGamepad") + 2])
+itfs, eps = walk_config(wcfg, "gamepad config")
+check(wcfg[9:59] == kcfg[9:59], "gamepad: interfaces 0/1 identical to the keyboard layout")
+check(itfs[2][0] == 2 and itfs[2][3:6] == (0xFF, 0x5D, 0x01), "gamepad: interface 2 is XInput FF/5D/01")
+check([e for e in eps if e[0] in (0x82, 0x02)] == [(0x82, 32), (0x02, 32)], "gamepad: XInput on EP2 IN + EP2 OUT, 32 bytes")
 xdesc = wcfg[59 + 9:59 + 9 + 17]
-check(xdesc[1] == 0x21 and xdesc[6] == 0x82 and xdesc[13] == 0x02, "wheel: XInput class descriptor points at EP 0x82 / 0x02")
+check(xdesc[1] == 0x21 and xdesc[6] == 0x82 and xdesc[13] == 0x02, "gamepad: XInput class descriptor points at EP 0x82 / 0x02")
 
-lcfg = blob("CfgDescrLegacy", 153)
-itfs, eps = walk_config(lcfg, "legacy config")
-check(eps[0] == (0x81, 32) and eps[1] == (0x02, 32), "legacy: EP1 IN / EP2 OUT like a real pad")
+lcfg = blob("CfgDescrXbox360", 153)
+itfs, eps = walk_config(lcfg, "xbox360 config")
+check(eps[0] == (0x81, 32) and eps[1] == (0x02, 32), "xbox360: EP1 IN / EP2 OUT like a real pad")
 
 # ---------------------------------------------------------------- Microsoft OS descriptors
 ms = blob("MsOsString", 18)
