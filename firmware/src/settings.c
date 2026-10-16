@@ -24,7 +24,7 @@ static __code uint8_t DEFAULTS[SETTINGS_SIZE] = {
   25,                 // hold: 250 ms
   20,                 // detents per revolution
   LED_REACTIVE,
-  130,                // led_hue: cyan
+  96,                 // led_hue: cyan (0 red, 64 green, 128 blue)
   AXIS_LX,
   0, 0, 0,
   // base: key1, key2, key3, knob press, (unused x2), CW, CCW
