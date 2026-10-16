@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flash the TISHRIC Knob firmware into the CH552 macropad.
+"""Flash the Detent firmware into a CH552 macropad.
 
   python flash.py [firmware.bin]
 
@@ -23,8 +23,11 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_BIN = [HERE.parent / "release" / "tishric_knob.bin",
-               HERE.parent / "firmware" / "build" / "tishric_knob.bin"]
+DEFAULT_BIN = [HERE.parent / "firmware" / "detent.bin",              # release package
+               HERE.parent / "firmware" / "build" / "detent.bin"]      # local build
+
+ZADIG_URL = "https://github.com/pbatard/libwdi/releases/download/v1.5.1/zadig-2.9.exe"
+ZADIG_SHA256 = "4ecaa95df3da3621486a043aef8b3050b8bafe7c901402871e816229ef82039b"
 
 CH_VID, CH_PID = 0x4348, 0x55E0
 MODE_WRITE_V2, MODE_VERIFY_V2 = 0xA5, 0xA6
@@ -50,20 +53,35 @@ def libusb_backend():
 
 
 def try_software_bootloader():
-    """If our firmware is running, ask it to jump into the bootloader."""
+    """If Detent firmware is running, ask it to jump into the bootloader.
+    Works with protocol 1 (first release) and protocol 2."""
     try:
-        sys.path.insert(0, str(HERE))
-        need("hid", "hidapi")
-        import tishric
-        k = tishric.Knob()
+        hid = need("hid", "hidapi")
+        path = next((d["path"] for d in hid.enumerate(0x1189, 0x8890) if d.get("usage_page") == 0xFF54), None)
+        if path is None:
+            return False
+        dev = hid.device()
+        dev.open_path(path)
     except Exception:
         return False
     try:
-        k.command(tishric.CMD_BOOTLOADER, wait=False)
-        print("Open firmware found - switched it to the bootloader.")
+        dev.send_feature_report(b"\x00" + bytes([1, 77]) + bytes(38))          # INFO / READ
+        proto = 1
+        for _ in range(50):
+            time.sleep(0.005)
+            r = bytes(dev.get_feature_report(0, 41))
+            r = r[1:] if len(r) == 41 else r
+            if len(r) >= 4 and r[0] == 1 and r[1] == 77:
+                proto = r[3]
+                break
+        cmd = 8 if proto == 1 else 10
+        dev.send_feature_report(b"\x00" + bytes([cmd, 78]) + bytes(38))
+        print("Running firmware found - switched it to the bootloader.")
         return True
+    except Exception:
+        return False
     finally:
-        k.close()
+        dev.close()
 
 
 def bootloader_present_in_windows():
@@ -100,7 +118,7 @@ DRIVER_STEPS = """
 The bootloader (USB ID 4348:55E0) needs the WinUSB driver. This is needed once per PC,
 and it can be installed without the macropad connected:
 
-  1. Zadig opens now (allow admin rights). If not: run tools\\zadig-2.9.exe
+  1. Zadig opens now (allow admin rights; it is downloaded on first use).
   2. Menu  Device -> Create New Device
   3. Name field (top): CH552 bootloader
      USB ID fields:    4348    55E0     (leave the third box empty)
@@ -110,9 +128,17 @@ and it can be installed without the macropad connected:
 
 
 def open_zadig():
-    zadig = next(HERE.glob("zadig*.exe"), None)
-    if zadig:
-        os.startfile(str(zadig))            # goes through UAC, unlike Popen
+    """Start Zadig, downloading the official signed release on first use."""
+    import hashlib
+    import urllib.request
+    zadig = HERE / "zadig-2.9.exe"
+    if not zadig.exists():
+        print(f"Downloading Zadig from {ZADIG_URL} ...")
+        data = urllib.request.urlopen(ZADIG_URL, timeout=60).read()
+        if hashlib.sha256(data).hexdigest() != ZADIG_SHA256:
+            sys.exit("Zadig download has an unexpected checksum - not starting it.")
+        zadig.write_bytes(data)
+    os.startfile(str(zadig))                # goes through UAC, unlike Popen
 
 
 def ensure_driver():
@@ -216,7 +242,8 @@ class Programmer:
 
 
 def main():
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else next((p for p in DEFAULT_BIN if p.exists()), None)
+    found = [p for p in DEFAULT_BIN if p.exists()]
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else max(found, key=lambda p: p.stat().st_mtime, default=None)
     if path is None or not path.exists():
         sys.exit("firmware .bin not found")
     data = path.read_bytes()
@@ -257,7 +284,7 @@ def main():
     print("Verifying ...")
     isp.write(data, MODE_VERIFY_V2)
     isp.exit()
-    print(f"\nDONE: {len(data)} bytes written and verified. The knob restarts by itself.")
+    print(f"\nDONE: {len(data)} bytes written and verified. The macropad restarts by itself.")
 
 
 if __name__ == "__main__":
