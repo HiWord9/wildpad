@@ -1,13 +1,13 @@
 """Static checks of the USB descriptors inside the built firmware image.
-Reads build/detent.bin + .map, walks every descriptor and parses the HID report
+Reads build/wildpad.bin + .map, walks every descriptor and parses the HID report
 descriptors to confirm report sizes match what the firmware sends."""
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = (ROOT / "build" / "detent.bin").read_bytes()
-MAP = (ROOT / "build" / "detent.map").read_text()
+BIN = (ROOT / "build" / "wildpad.bin").read_bytes()
+MAP = (ROOT / "build" / "wildpad.map").read_text()
 errors = []
 
 

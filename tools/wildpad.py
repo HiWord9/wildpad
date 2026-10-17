@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Detent - command line tool for macropads running the Detent firmware.
+"""Wildpad - command line tool for macropads running the Wildpad firmware.
 
-  python detent.py info                         firmware, board and USB layout
-  python detent.py show                         every profile, combo and option
-  python detent.py watch                        live knob / keys / profile (Ctrl+C stops)
-  python detent.py set 1 key1 key:ctrl+c        profile 1, key 1 -> Ctrl+C
-  python detent.py set 2 right axis:lx:10       profile 2, knob -> gamepad stick X
-  python detent.py set 1 knob key:alt --now     own action right away (see below)
-  python detent.py set 1 key1 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
+  python wildpad.py info                         firmware, board and USB layout
+  python wildpad.py show                         every profile, combo and option
+  python wildpad.py watch                        live knob / keys / profile (Ctrl+C stops)
+  python wildpad.py set 1 key1 key:ctrl+c        profile 1, key 1 -> Ctrl+C
+  python wildpad.py set 2 right axis:lx:10       profile 2, knob -> gamepad stick X
+  python wildpad.py set 1 knob key:alt --now     own action right away (see below)
+  python wildpad.py set 1 key1 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
                                                 several steps (see 'actions')
-  python detent.py combo add knob key1 profile:1           hold knob + key 1
-  python detent.py combo add key3 right scroll:-1 --profile 2
-  python detent.py combo add key1 key1 key:esc  hold key 1 alone (long press)
-  python detent.py combo del 3                  remove combo number 3
-  python detent.py light 1 breathe #ff8800      profile 1 light effect and color
-  python detent.py option brightness 200        see OPTIONS below
-  python detent.py profile 2                    switch to profile 2 now
-  python detent.py export my.json               save everything to a file
-  python detent.py import my.json               load a file (saved on the device)
-  python detent.py defaults                     factory settings (saved)
-  python detent.py bootloader                   jump to the USB bootloader
-  python detent.py actions                      list action and key names
+  python wildpad.py combo add knob key1 profile:1           hold knob + key 1
+  python wildpad.py combo add key3 right scroll:-1 --profile 2
+  python wildpad.py combo add key1 key1 key:esc  hold key 1 alone (long press)
+  python wildpad.py combo del 3                  remove combo number 3
+  python wildpad.py light 1 breathe #ff8800      profile 1 light effect and color
+  python wildpad.py option brightness 200        see OPTIONS below
+  python wildpad.py profile 2                    switch to profile 2 now
+  python wildpad.py export my.json               save everything to a file
+  python wildpad.py import my.json               load a file (saved on the device)
+  python wildpad.py defaults                     factory settings (saved)
+  python wildpad.py bootloader                   jump to the USB bootloader
+  python wildpad.py actions                      list action and key names
 
 Inputs: key1 key2 key3 ... knob (press), right / left (knob turns).
 A key that starts combos (or has a long press) sends its own action when released,
@@ -124,7 +124,7 @@ def _s8(b):
 
 
 def parse_action(text):
-    """Action text -> (type, p1, p2). See `detent.py actions`."""
+    """Action text -> (type, p1, p2). See `wildpad.py actions`."""
     t = text.strip().lower()
     kind, _, arg = t.partition(":")
     try:
@@ -469,7 +469,7 @@ class Settings:
         L = self.L
         f = self.b[S_FLAGS]
         return {
-            "format": "detent-settings", "version": SETTINGS_VERSION,
+            "format": "wildpad-settings", "version": SETTINGS_VERSION,
             "board": {"inputs": L.names},
             "options": {
                 "brightness": self.b[S_BRIGHTNESS], "holdMs": self.b[S_HOLD] * 10,
@@ -490,8 +490,8 @@ class Settings:
 
     def from_json(self, j):
         L, o = self.L, j.get("options", {})
-        if j.get("format") != "detent-settings":
-            raise ActionError("not a Detent settings file")
+        if j.get("format") not in ("wildpad-settings", "detent-settings"):   # older name
+            raise ActionError("not a Wildpad settings file")
         b = self.b
         b[S_BRIGHTNESS] = int(o.get("brightness", b[S_BRIGHTNESS]))
         b[S_HOLD] = max(10, min(100, int(o.get("holdMs", b[S_HOLD] * 10)) // 10))
@@ -531,7 +531,7 @@ class Device:
             sys.exit("Missing module: pip install hidapi")
         path = next((d["path"] for d in hid.enumerate(VID, PID) if d.get("usage_page") == USAGE_PAGE), None)
         if path is None:
-            sys.exit("No Detent macropad found. Is it plugged in and running the Detent firmware?")
+            sys.exit("No Wildpad macropad found. Is it plugged in and running the Wildpad firmware?")
         self.dev = hid.device()
         self.dev.open_path(path)
         self.seq = 0
@@ -608,7 +608,7 @@ def print_settings(s):
 
 def cmd_info(d):
     L = d.layout
-    print(f"Detent firmware {L.fw}, board {L.board}: {L.buttons} buttons, {L.leds} LEDs")
+    print(f"Wildpad firmware {L.fw}, board {L.board}: {L.buttons} buttons, {L.leds} LEDs")
     print(f"USB layout    {USB_LAYOUTS[L.usb] if L.usb < 3 else L.usb}")
     print(f"profiles      up to {L.profiles}, now in profile {L.current + 1}")
     print(f"inputs        {' '.join(L.names)}")
@@ -776,7 +776,7 @@ def main(argv):
             d.cmd(CMD_BOOTLOADER, wait=False)
             print("the macropad is now in its USB bootloader")
         else:
-            sys.exit("unknown command - run 'detent.py help'")
+            sys.exit("unknown command - run 'wildpad.py help'")
     except ActionError as e:
         sys.exit(f"error: {e}")
     finally:

@@ -1,6 +1,6 @@
-"""Build the Detent firmware with SDCC.
+"""Build the Wildpad firmware with SDCC.
 
-Usage:  python build.py          -> build/detent.bin and .hex
+Usage:  python build.py          -> build/wildpad.bin and .hex
 """
 import os
 import re
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
-TARGET = "detent"
+TARGET = "wildpad"
 
 FREQ_SYS = 16000000
 XRAM_SIZE = 0x02C0

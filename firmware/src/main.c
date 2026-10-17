@@ -1,5 +1,5 @@
 // ===================================================================================
-// Detent - firmware for CH552 "keys + knob" macropads
+// Wildpad - firmware for CH552 "keys + knob" macropads
 // ===================================================================================
 // Built on wagiminator's CH55x support code (CC BY-SA 3.0). Features:
 //  - quadrature decoded in a 4 kHz timer interrupt -> no lost or reversed steps
@@ -30,6 +30,8 @@
 #include "usbdev.h"
 
 #define BTN_BIT(i)      (1 << (i))
+#define KEEP_CLEAN_START  0x5A            // RESET_KEEP markers, see main()
+#define KEEP_BOOTLOADER   0xB0
 #define NO_INPUT        0x0F
 
 // ===================================================================================
@@ -967,20 +969,21 @@ static void reboot(void) {
   while(1);
 }
 
+// Enter the USB bootloader through a chip reset: main() jumps to it straight from the
+// reset state (default clock, untouched peripherals), like a bootloader entered at
+// plug-in. Jumping from the running firmware made Windows fail to start the
+// bootloader's driver (code 10) most of the time.
 static void enterBootloader(void) {
   uint8_t i;
+  RST_keep(KEEP_BOOTLOADER);                                // even a watchdog reset gets there
   EA = 0;
   for(i = 0; i < NEO_COUNT; i++) NEO_writeColor(80, 80, 80);
   EA = 1;
-  DLY_ms(50);
+  DLY_ms(50);                                               // let the control transfer finish
   USB_disconnect();
-  WDT_stop();
-  ET2 = 0;
-  TR2 = 0;
-  T2CON = 0;
   DLY_ms(300);                                              // let the host see the unplug
-  EA = 0;
-  BOOT_now();
+  RST_now();                                                // allowed: the watchdog is running
+  while(1);
 }
 
 // ===================================================================================
@@ -997,12 +1000,18 @@ void requestXramClear(void) __naked {
   __endasm;
 }
 
-#define KEEP_CLEAN_START  0x5A
-
 void main(void) {
   uint8_t i;
 
 #ifndef TEST_HARNESS
+  if(RST_getKeep() == KEEP_BOOTLOADER) {                    // asked for the bootloader
+    RST_keep(0);
+    // Stay off the bus for about 2 s first (default 6 MHz clock after the reset, so
+    // DLY_ms counts ~2.7x slow): when the bootloader showed up a moment after the pad
+    // left, Windows failed to start its driver (code 10); after a real unplug it works.
+    DLY_ms(750);
+    BOOT_now();
+  }
   // Start every boot from a clean chip. After its time-out the ROM bootloader hands
   // over without a reset, leaving its USB and interrupt setup behind; the pad then
   // enumerated but stopped answering control requests. One software reset per start

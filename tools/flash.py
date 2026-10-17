@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Flash the Detent firmware into a CH552 macropad.
+"""Flash the Wildpad firmware into a CH552 macropad.
 
-  python flash.py [firmware.bin]
+  python flash.py [firmware.bin] [--wait]
+  (--wait: don't ask the running firmware, just wait for a bootloader entered by hand)
 
-1. If Detent firmware is already running, it is told to jump into the USB
+1. If Wildpad firmware is already running, it is told to jump into the USB
    bootloader (no need to open the case).
 2. Otherwise enter the bootloader by hand:
      - stock firmware: open the case, short the R12 pads (or P1.5 to GND) while
        plugging in the USB cable
-     - Detent firmware: hold key 1 while plugging in
+     - Wildpad firmware: hold key 1 while plugging in
 3. Windows needs the WinUSB driver for the bootloader (USB ID 4348:55E0) once;
    the script walks you through it with Zadig.
 
@@ -25,8 +26,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))               # winusb.py lives next to this script
-DEFAULT_BIN = [HERE.parent / "firmware" / "detent.bin",              # release package
-               HERE.parent / "firmware" / "build" / "detent.bin"]      # local build
+DEFAULT_BIN = [HERE.parent / "firmware" / "wildpad.bin",              # release package
+               HERE.parent / "firmware" / "build" / "wildpad.bin"]      # local build
 
 CH_VID, CH_PID = 0x4348, 0x55E0
 MODE_WRITE, MODE_VERIFY = 0xA5, 0xA6
@@ -64,7 +65,7 @@ def need(module, pipname):
 # Getting into the bootloader
 # ===================================================================================
 def try_software_bootloader(timeout=6):
-    """If Detent firmware is running, ask it to jump into the bootloader. Runs in a
+    """If Wildpad firmware is running, ask it to jump into the bootloader. Runs in a
     thread: a pad that stopped answering USB requests would otherwise hang here."""
     import threading
     result = []
@@ -78,7 +79,7 @@ def try_software_bootloader(timeout=6):
 
 
 def _software_bootloader():
-    """Works with every Detent configuration protocol (1, 2 and 3)."""
+    """Works with every Wildpad configuration protocol (1, 2 and 3)."""
     try:
         hid = need("hid", "hidapi")
         path = next((d["path"] for d in hid.enumerate(0x1189, 0x8890) if d.get("usage_page") == 0xFF54), None)
@@ -290,8 +291,10 @@ class Programmer:
 
 
 def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    wait_only = "--wait" in sys.argv                # skip the request to the running firmware
     found = [p for p in DEFAULT_BIN if p.exists()]
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else max(found, key=lambda p: p.stat().st_mtime, default=None)
+    path = Path(args[0]) if args else max(found, key=lambda p: p.stat().st_mtime, default=None)
     if path is None or not path.exists():
         sys.exit("firmware .bin not found")
     data = path.read_bytes()
@@ -305,7 +308,7 @@ def main():
 
     t = None
     attempts = 8
-    for attempt in range(1, attempts + 1):
+    for attempt in range(1, 0 if wait_only else attempts + 1):
         jumped = try_software_bootloader()
         for _ in range(5 if attempt > 1 else 0):    # firmware may still be starting up
             if jumped:
@@ -324,11 +327,11 @@ def main():
         print(f"  trying again ({attempt + 1} of {attempts}) - this takes about 10 s ...")
         wait_for_firmware(15)
     if t is None:
-        print("\nWaiting for the bootloader (60 s) ...")
+        print(f"\nWaiting for the bootloader ({180 if wait_only else 60} s) ...")
         print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")
-        print("  Detent firmware: hold key 1 while plugging in USB")
+        print("  Wildpad firmware: hold key 1 while plugging in USB")
         print("  The bootloader only stays about 10 s; flashing starts as soon as it shows up.")
-        t = wait_for_bootloader(60, retrying=False)
+        t = wait_for_bootloader(180 if wait_only else 60, retrying=False)
     if t is None:
         sys.exit("Bootloader not found.")
 

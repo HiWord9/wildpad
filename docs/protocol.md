@@ -65,7 +65,7 @@ INFO payload:
 | 14 | settings version (4) |
 | 15 | active profile |
 
-Older firmware: protocol 2 (Detent 1.0 previews) had a fixed 104-byte layout with
+Older firmware: protocol 2 (early previews) had a fixed 104-byte layout with
 keyboard and wheel modes; protocol 1 used `READ = 1` and `BOOTLOADER = 8`. The flasher
 recognises both by the protocol byte of the cmd 1 response.
 
@@ -159,11 +159,11 @@ present whenever any action, combo or step uses type 6 or 7.
 
 ## File format
 
-`detent.py export` and the setup page's *Save settings to a file* write the same JSON:
+`wildpad.py export` and the setup page's *Save settings to a file* write the same JSON:
 
 ```json
 {
-  "format": "detent-settings", "version": 4,
+  "format": "wildpad-settings", "version": 4,
   "options": { "brightness": 128, "holdMs": 300, "debounceMs": 5, "tapMs": 4,
                "clicksPerTurn": 20, "profiles": 3, "startProfile": 1, "lightSpeed": 5,
                "turnHoldMs": 800, "reverseKnob": false, "halfStep": false, "xbox360": false },
@@ -176,7 +176,7 @@ present whenever any action, combo or step uses type 6 or 7.
 }
 ```
 
-Action texts are listed by `detent.py actions`; `key:alt+tab:hold` is type 11 and
+Action texts are listed by `wildpad.py actions`; `key:alt+tab:hold` is type 11 and
 `seq:…` a sequence (steps `tap ACTION`, `hold ACTION`, `wait MS`, `on release`,
 separated by `;`). `rightAway` lists the buttons whose own action is sent right away;
 when it is missing, modifier-only keys, gamepad buttons and type 11 are sent right

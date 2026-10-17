@@ -2,7 +2,7 @@
 // Persistent settings (CH552 Data-Flash, 128 bytes)
 // ===================================================================================
 // This block is exchanged byte for byte with the configurator, so its layout is part
-// of the configuration protocol (docs/protocol.md). Keep tools/detent.py and
+// of the configuration protocol (docs/protocol.md). Keep tools/wildpad.py and
 // tools/configurator.html in sync when changing it, and bump SETTINGS_VERSION.
 //
 // Inputs are numbered: buttons 0 .. BOARD_BUTTONS-1, then knob right, knob left.

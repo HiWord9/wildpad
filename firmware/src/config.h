@@ -1,7 +1,7 @@
 // ===================================================================================
-// Detent firmware - build and board configuration
+// Wildpad firmware - build and board configuration
 // ===================================================================================
-// Everything board specific lives in this file. To port Detent to another CH552
+// Everything board specific lives in this file. To port Wildpad to another CH552
 // macropad, change the pins, BOARD_* values and BTN_READ() below.
 
 #pragma once

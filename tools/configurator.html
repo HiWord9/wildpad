@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Detent</title>
-<meta name="description" content="Set up a macropad running the Detent firmware: keys, knob, combos, profiles and lights.">
+<title>Wildpad</title>
+<meta name="description" content="Set up a macropad running the Wildpad firmware: keys, knob, combos, profiles and lights.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap" rel="stylesheet">
@@ -69,10 +69,12 @@ button { cursor: pointer; }
   font-size: 22px; font-weight: 750; letter-spacing: -.01em; font-variation-settings: "wdth" 125;
   display: flex; align-items: center; gap: 10px; margin-right: 6px;
 }
-.mark i {
-  width: 18px; height: 18px; border-radius: 50%; display: inline-block;
-  background: conic-gradient(from 0deg, var(--body-1) 0 25%, var(--accent) 0 30%, var(--body-1) 0);
-  box-shadow: inset 0 0 0 3px var(--bg), 0 0 0 1.5px var(--body-1);
+.mark i {                                /* a keycap with the wildcard star */
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  background: linear-gradient(180deg, var(--body-1), var(--body-2)); color: var(--accent);
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.35), 0 1px 0 rgba(0,0,0,.25);
+  font-style: normal; font-size: 20px; font-weight: 800; line-height: 1; padding-top: 6px;
+  font-variation-settings: "wdth" 100;
 }
 .tabs { display: flex; gap: 4px; }
 .tab {
@@ -394,7 +396,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 <body>
 <header class="top">
   <div class="top-in">
-    <div class="mark"><i aria-hidden="true"></i>detent</div>
+    <div class="mark"><i aria-hidden="true">*</i>wildpad</div>
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="controls" aria-selected="true">Controls</button>
       <button class="tab" role="tab" data-tab="lighting" aria-selected="false">Lighting</button>
@@ -524,14 +526,14 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
             <span>This replaces every profile, combo and option.</span>
             <button class="btn danger" id="factoryYes">Restore</button><button class="btn" id="factoryNo">Cancel</button>
           </div>
-          <p class="note">The file works with the command-line tool too (<code>detent.py import</code>).</p>
+          <p class="note">The file works with the command-line tool too (<code>wildpad.py import</code>).</p>
         </div>
       </div>
       <div class="panel">
         <div class="panel-h"><h2>Firmware</h2></div>
         <div class="panel-b">
           <dl class="info-grid" id="fwInfo"></dl>
-          <p class="note">To update, run <b>flash.bat</b> from the Detent download. It switches the pad into update mode by itself. If that ever fails, unplug the pad and plug it back in while holding key 1.</p>
+          <p class="note">To update, run <b>flash.bat</b> from the Wildpad download. It switches the pad into update mode by itself. If that ever fails, unplug the pad and plug it back in while holding key 1.</p>
           <div class="row" style="margin-top:10px"><button class="btn" id="bootBtn" disabled>Switch to update mode now</button></div>
         </div>
       </div>
@@ -663,7 +665,7 @@ function describeSteps(list) {
   return list.map(st => st.op === "wait" ? `${st.ms} ms` : (st.op === "hold" ? "hold " : "") + describe(st.a, true)).join(", ");
 }
 
-// File format action text, identical to tools/detent.py
+// File format action text, identical to tools/wildpad.py
 function actionToText(a, m = model) {
   switch (a.t) {
     case T.SEQ: return "seq:" + seqToText(m.seqs.get(a.p1) || { press: [], release: [] });
@@ -922,7 +924,7 @@ class Model {
     const L = this.L, b = this.b, f = b[S.FLAGS];
     const names = Array.from({ length: L.inputs }, (_, i) => L.fileName(i));
     return {
-      format: "detent-settings", version: SVER, board: { inputs: names },
+      format: "wildpad-settings", version: SVER, board: { inputs: names },
       options: { brightness: b[S.BRIGHT], holdMs: b[S.HOLD] * 10, debounceMs: b[S.DEBOUNCE], tapMs: b[S.TAP],
         clicksPerTurn: b[S.DETENTS], profiles: this.np, startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED], turnHoldMs: (b[S.TURN_HOLD] || 8) * 100,
         reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF), xbox360: !!(f & FLAG.XBOX) },
@@ -934,7 +936,7 @@ class Model {
     };
   }
   fromJSON(j) {
-    if (j.format !== "detent-settings") throw new Error("this is not a Detent settings file");
+    if (j.format !== "wildpad-settings" && j.format !== "detent-settings") throw new Error("this is not a Wildpad settings file");
     const L = this.L, b = this.b, o = j.options || {}, clamp = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : d));
     b[S.BRIGHT] = clamp(o.brightness, 0, 255, b[S.BRIGHT]);
     b[S.HOLD] = clamp(Math.round((o.holdMs ?? b[S.HOLD] * 10) / 10), 10, 100, 30);
@@ -1785,7 +1787,7 @@ function renderSettings() {
     } }, String(k + 1))));
   const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad", "Xbox 360 controller"][L.usb] || "?";
   $("fwInfo").replaceChildren(
-    h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Detent ${L.fw}` : "Not connected (demo)" }),
+    h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Wildpad ${L.fw}` : "Not connected (demo)" }),
     h("dt", { text: "Board" }), h("dd", { text: `${L.keys.length} keys and a knob, ${L.leds} lights` }),
     h("dt", { text: "Shows up as" }), h("dd", { text: dev ? usb : "—" }),
     h("dt", { text: "Memory" }), h("dd", { text: `${model.np} of ${L.profiles} profiles in use; ${model.recSize()} bytes for combos and steps, ${model.usedBytes()} used` }));
@@ -1826,7 +1828,7 @@ $("redo").addEventListener("click", redo);
 $("addCombo").addEventListener("click", () => addCombo());
 $("exportBtn").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(model.toJSON(), null, 2)], { type: "application/json" });
-  const a = h("a", { href: URL.createObjectURL(blob), download: "detent-settings.json" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: "wildpad-settings.json" });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 $("importBtn").addEventListener("click", () => $("importFile").click());

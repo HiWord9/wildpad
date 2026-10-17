@@ -1,6 +1,6 @@
-# Porting Detent to another CH552 macropad
+# Porting Wildpad to another CH552 macropad
 
-Many cheap macropads use a CH552 with different key counts. Detent keeps everything
+Many cheap macropads use a CH552 with different key counts. Wildpad keeps everything
 board specific in [firmware/src/config.h](../firmware/src/config.h).
 
 1. **Find the pins.** Open the case and follow the traces from each switch, the
@@ -27,7 +27,7 @@ board specific in [firmware/src/config.h](../firmware/src/config.h).
 
 The first flash always needs the board's hardware bootloader entry: on CH552 that's
 P3.6 (USB D+) pulled up through ~10 kΩ to 3.3 V while powering up, or whatever pad the
-board routes to it (R12 on the 3-key board). Once Detent runs, holding
+board routes to it (R12 on the 3-key board). Once Wildpad runs, holding
 `BOARD_BOOT_BUTTON` while plugging in, or `flash.bat`, enters the bootloader.
 
 Pull requests with new boards are welcome; please include a photo of the PCB and the

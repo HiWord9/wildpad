@@ -1,14 +1,14 @@
-# Detent
+# Wildpad
 
-**Open firmware and setup app for the cheap CH552 “3 keys + knob” macropad.
-Every knob click counts, every control does what you want.**
+**The wildcard for your macropad.** Open firmware and setup app for the cheap CH552
+“keys + knob” macropads: every knob click counts, every control does what you want.
 
 
 These little macropads are sold under dozens of brand names with the same PCB: three
 mechanical keys, a clickable rotary knob, three RGB LEDs and a WCH CH552G
 microcontroller (stock USB ID `1189:8890`, configured with an app called
 “MINI KeyBoard”). The stock firmware loses most knob clicks as soon as you turn it with
-any speed, and its app can only assign a key per button. Detent replaces both.
+any speed, and its app can only assign a key per button. Wildpad replaces both.
 
 ## What you get
 
@@ -57,7 +57,7 @@ Knob events never arrive closer than 47 ms apart: the stock firmware polls the e
 from its main loop and blocks on USB for every step, so it tops out at about 21 clicks
 per second and reads the wrong direction beyond that. Every open firmware for this
 board we found reads the encoder the same way. Details in [docs/findings.md](docs/findings.md).
-With Detent, the same fast turns deliver exactly 20 events each.
+With Wildpad, the same fast turns deliver exactly 20 events each.
 
 ## Quick start (Windows)
 
@@ -128,22 +128,22 @@ turn* can scroll without moving the axis.
 ## Command line
 
 ```
-python tools/detent.py show                       # everything on the pad
-python tools/detent.py set 1 key1 key:ctrl+c      # profile 1, key 1
-python tools/detent.py set 2 right axis:lx:10     # profile 2, knob = stick X
-python tools/detent.py combo add key1 key2 media:mute
-python tools/detent.py set 1 key3 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
-python tools/detent.py option profiles 1                  # more memory for combos and steps
-python tools/detent.py light 1 breathe #ff8800
-python tools/detent.py export backup.json         # same format as the setup page
-python tools/detent.py actions                    # all action and key names
+python tools/wildpad.py show                       # everything on the pad
+python tools/wildpad.py set 1 key1 key:ctrl+c      # profile 1, key 1
+python tools/wildpad.py set 2 right axis:lx:10     # profile 2, knob = stick X
+python tools/wildpad.py combo add key1 key2 media:mute
+python tools/wildpad.py set 1 key3 "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt"
+python tools/wildpad.py option profiles 1                  # more memory for combos and steps
+python tools/wildpad.py light 1 breathe #ff8800
+python tools/wildpad.py export backup.json         # same format as the setup page
+python tools/wildpad.py actions                    # all action and key names
 ```
 
 ## Building
 
 ```
 winget install SDCC.SDCC                  # or: apt install sdcc sdcc-ucsim
-python firmware/build.py                  # -> firmware/build/detent.bin
+python firmware/build.py                  # -> firmware/build/wildpad.bin
 python firmware/test/run_tests.py         # tests in the s51 8051 simulator
 python firmware/test/check_descriptors.py # USB descriptor checks on the binary
 ```
@@ -169,7 +169,7 @@ pad. See [docs/porting.md](docs/porting.md).
 | `firmware/src/settings.c` | Settings in the 128-byte Data-Flash, factory settings |
 | `tools/configurator.html` | Setup page (WebHID) |
 | `tools/flash.py`, `winusb.py` | Flasher; talks WinUSB directly on Windows |
-| `tools/detent.py` | Command-line tool |
+| `tools/wildpad.py` | Command-line tool |
 
 With a gamepad action the pad is a composite USB device: a HID keyboard/mouse, a vendor
 HID interface for configuration and live state, and an XInput interface. A Microsoft

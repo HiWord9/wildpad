@@ -143,12 +143,11 @@ __code uint8_t MsCompatId[40] = {
 // String descriptors
 // ===================================================================================
 static __code uint16_t StrLang[]  = { (3 << 8) | 4, 0x0409 };
-static __code uint16_t StrManuf[] = { (3 << 8) | (2 + 2 * 6), 'D','e','t','e','n','t' };
-static __code uint16_t StrProd[]  = { (3 << 8) | (2 + 2 * 15),
-  'D','e','t','e','n','t',' ','M','a','c','r','o','p','a','d' };
-static __code uint16_t StrSer[]   = { (3 << 8) | (2 + 2 * 8), 'D','E','T','E','N','T','0','1' };
-static __code uint16_t StrItf[]   = { (3 << 8) | (2 + 2 * 13),
-  'D','e','t','e','n','t',' ','c','o','n','f','i','g' };
+static __code uint16_t StrManuf[] = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p','a','d' };
+static __code uint16_t StrProd[]  = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p','a','d' };
+static __code uint16_t StrSer[]   = { (3 << 8) | (2 + 2 * 8), 'W','I','L','D','P','A','D','1' };
+static __code uint16_t StrItf[]   = { (3 << 8) | (2 + 2 * 14),
+  'W','i','l','d','p','a','d',' ','c','o','n','f','i','g' };
 static __code uint16_t StrPadProd[] = { (3 << 8) | (2 + 2 * 10),
   'C','o','n','t','r','o','l','l','e','r' };
 static __code uint16_t StrPadSer[]  = { (3 << 8) | (2 + 2 * 7), '0','8','F','E','C','9','3' };
