@@ -51,7 +51,7 @@ extern __xdata uint8_t boardMap[BOARD_MAP_LEN];
 extern __bit hasKnob, ledReversed;
 #define IN_RIGHT            nButtons                // knob turned clockwise
 #define IN_LEFT             (nButtons + 1)          // knob turned counter-clockwise
-#define RECORDS_AT(n)       (profOff + (n) * profSize)   // records after n profiles
+#define RECORDS_AT(n)       ((uint8_t)(profOff + (uint8_t)((n) * profSize)))   // records after n profiles
 
 // Header bytes
 #define S_MAGIC             0
@@ -170,7 +170,7 @@ typedef struct {
 extern __xdata uint8_t cfg[SETTINGS_SIZE];
 
 #define CFG_FLAGS           cfg[S_FLAGS]
-#define PROFILE(p)          (cfg + profOff + (p) * profSize)
+#define PROFILE(p)          (cfg + (uint8_t)(profOff + (uint8_t)((p) * profSize)))
 #define ACTION(p, i)        ((__xdata action_t*)(PROFILE(p) + PROFILE_HEAD + 3 * (i)))
 
 

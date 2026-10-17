@@ -73,9 +73,14 @@ static void applySettings(void) {
   if(prof >= nProf) prof = 0;
 }
 
-// The active profile's action for an input, without the ACT_NOW flag
+// The active profile's action for an input (3 bytes each after the profile head)
+static __xdata action_t* profAction(uint8_t in) {
+  return (__xdata action_t*)(PROFILE(prof) + PROFILE_HEAD + (uint8_t)(in + in + in));
+}
+
+// The same without the ACT_NOW flag
 static __xdata action_t* baseAction(uint8_t in) {
-  __xdata action_t* a = ACTION(prof, in);
+  __xdata action_t* a = profAction(in);
   baseAct.type = a->type & ACT_TYPE_MASK;
   baseAct.p1 = a->p1;
   baseAct.p2 = a->p2;
@@ -83,7 +88,7 @@ static __xdata action_t* baseAction(uint8_t in) {
 }
 
 static __bit sendsNow(uint8_t in) {
-  return (ACTION(prof, in)->type & ACT_NOW) ? 1 : 0;
+  return (profAction(in)->type & ACT_NOW) ? 1 : 0;
 }
 
 static __bit axisMode(void) {
@@ -333,8 +338,19 @@ static void LED_flashAll(void) {
   for(i = 0; i < nLeds; i++) ledV[i] = 255;
 }
 
-static uint8_t mul8(uint8_t a, uint8_t b) {
-  return ((uint16_t)a * b + 255) >> 8;
+// (a * b + 255) >> 8 with the CPU's 8x8 multiply (C would call a 16-bit library one)
+static uint8_t mul8(uint8_t a, uint8_t b) __naked {
+  a; b;
+  __asm
+    mov  a, dpl
+    mov  b, _mul8_PARM_2
+    mul  ab                     ; b:a = a * b
+    add  a, #0xFF               ; + 255, keep the carry
+    clr  a
+    addc a, b
+    mov  dpl, a
+    ret
+  __endasm;
 }
 
 static __xdata uint8_t colR, colG, colB;  // color of the LED being set
@@ -398,8 +414,10 @@ static void LED_task(void) {
   }
 
   EA = 0;                                                      // WS2812 timing is strict
-  if(ledReversed) for(i = nLeds, o = rgb + 3 * nLeds; i; i--) { o -= 3; NEO_writeColor(o[0], o[1], o[2]); }
-  else for(i = nLeds, o = rgb; i; i--, o += 3) NEO_writeColor(o[0], o[1], o[2]);
+  for(i = 0; i < nLeds; i++) {
+    o = rgb + (uint8_t)((ledReversed ? nLeds - 1 - i : i) * 3);
+    NEO_writeColor(o[0], o[1], o[2]);
+  }
   EA = 1;
 
   for(i = 0; i < nLeds; i++) {                                 // fade press highlights

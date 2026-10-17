@@ -133,12 +133,12 @@ void SET_defaults(__xdata uint8_t* dst) {
   SET_layout(dst);
   for(i = RECORDS_AT(maxProf); i < SETTINGS_SIZE; i++) dst[i] = REC_END;
   for(i = 0; i < maxProf * PROFILE_HEAD; i++)
-    dst[profOff + (i >> 2) * profSize + (i & 3)] = DEF_COLORS[i];
+    dst[(uint8_t)(RECORDS_AT(i >> 2) + (i & 3))] = DEF_COLORS[i];
   for(i = 0; i < sizeof(DEF_ACTIONS) / 5; i++) {
     d = DEF_ACTIONS[i];
     t = defInput(d[1]);
     if(d[0] >= maxProf || t == 0xFF) continue;
-    q = dst + profOff + d[0] * profSize + PROFILE_HEAD + 3 * t;
+    q = dst + (uint8_t)(RECORDS_AT(d[0]) + PROFILE_HEAD + 3 * t);
     q[0] = d[2]; q[1] = d[3]; q[2] = d[4];
   }
   q = dst + RECORDS_AT(maxProf);
@@ -186,7 +186,7 @@ uint8_t SET_valid(__xdata uint8_t* p) {
   if(p[S_LED_SPEED] == 0 || p[S_LED_SPEED] > 10) return 0;
   if(p[S_TURN_HOLD] > 30) return 0;
   for(i = 0; i < n; i++) {
-    q = p + profOff + i * profSize;
+    q = p + RECORDS_AT(i);
     if(q[3] > LED_LAST) return 0;
     for(j = 0; j < nInputs; j++) {
       end = q[PROFILE_HEAD + 3 * j] & ACT_TYPE_MASK;
