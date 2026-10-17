@@ -2145,7 +2145,13 @@ function renderWizard() {
         h("span", { class: "switch" }, h("input", { type: "checkbox", checked: w.rev, onchange: e => { w.rev = e.target.checked; } }), h("span")),
         h("span", { text: "The lights run from the last key to the first (turn on if the wrong key lights up when pressed)" })),
       h("div", { class: "row" },
-        h("button", { class: "btn primary", text: "Use this board", onclick: () => { const r = wizardMap(); applyBoard(r.id, r.map); } }), cancel));
+        h("button", { class: "btn primary", text: "Use this board", onclick: () => {
+          const r = wizardMap();
+          if (r.id && r.id === L.board) {                   // nothing to change: keep the settings
+            stopWizard(); boardOpen = false; renderBoard();
+            toast(`That's ${BOARDS[r.id].name}, the board it's set up as already`);
+          } else applyBoard(r.id, r.map);
+        } }), cancel));
   }
 }
 
