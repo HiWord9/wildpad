@@ -648,7 +648,7 @@ dialog.guide::backdrop { background: rgba(10, 12, 14, .55); }
 "use strict";
 // =============================================================================== protocol
 const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 3, SVER = 5;
-const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11, INJECT: 12, BOARD: 13 };
+const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11, BOARD: 13 };
 const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offset or length" };
 const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10, PROFILES: 11, BOARD: 12, MAP: 13 };
 // Boards: the same table as BOARDS in firmware/src/settings.c. A map is

@@ -879,7 +879,7 @@ static void STATUS_task(void) {
 #define CMD_REBOOT      9
 #define CMD_BOOTLOADER  10
 #define CMD_PROFILE     11
-#define CMD_INJECT      12                // test aid: offset = buttons held, length = int8 knob clicks
+                                          // 12: unused (was a test aid)
 #define CMD_BOARD       13                // offset = board (0: pin map in the data), live until SAVE
 
 #define ST_OK           0
