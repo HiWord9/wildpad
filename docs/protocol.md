@@ -38,7 +38,7 @@ matching `cmd` and `seq` (poll every few milliseconds; `seq` should cycle throug
 | 7 | STATUS | – | bytes 0–4 like the live input report; bytes 5, 6 the raw P1 and P3 port pins (to find a board's keys); bytes 8–16 the keyboard report being sent (report id, modifiers, reserved, 6 keys) |
 | 8 | RECENTER | – | – (knob axis center = current position) |
 | 9 | REBOOT | – | – (device reconnects) |
-| 10 | BOOTLOADER | – | – (device reappears as the CH552 bootloader `4348:55E0`) |
+| 10 | BOOTLOADER | offset 1: quick time-out | – (device reappears as the CH552 bootloader `4348:55E0`; it leaves again after ~10 s without a command, ~3 s with the quick time-out, ~20 s after each command) |
 | 11 | PROFILE | offset = profile (0-based) | – (switch the active profile) |
 | 12 | INJECT | offset = buttons held (bit *i* = button *i*), length = knob clicks (int8) | – (acts as if the buttons were held and the knob turned; for automated tests) |
 | 13 | BOARD | offset = board (1 … 3), or 0 with the 10-byte pin map as data | byte 0: as COMMIT (live settings = factory settings for that board, not saved; status 2 if the map is invalid) |

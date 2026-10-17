@@ -99,7 +99,8 @@ def _software_bootloader():
             if len(r) >= 4 and r[0] == 1 and r[1] == 77:
                 proto = r[3]
                 break
-        dev.send_feature_report(b"\x00" + bytes([8 if proto == 1 else 10, 78]) + bytes(38))
+        # offset 1: quick bootloader time-out, so a try Windows botches costs ~3 s
+        dev.send_feature_report(b"\x00" + bytes([8 if proto == 1 else 10, 78, 1]) + bytes(37))
         print("Asked the running firmware to start the USB bootloader.")
         return True
     except Exception:
@@ -307,7 +308,7 @@ def main():
         input("Press Enter here when Zadig says the driver was installed ...")
 
     t = None
-    attempts = 8
+    attempts = 25                   # a failed try costs ~4 s (quick bootloader time-out)
     for attempt in range(1, 0 if wait_only else attempts + 1):
         jumped = try_software_bootloader()
         for _ in range(5 if attempt > 1 else 0):    # firmware may still be starting up

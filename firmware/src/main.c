@@ -29,7 +29,7 @@
 
 #define BTN_BIT(i)      (1 << (i))
 #define KEEP_CLEAN_START  0x5A            // RESET_KEEP markers, see main()
-#define KEEP_BOOTLOADER   0xB0
+#define KEEP_BOOTLOADER   0xB0            // + 1: quick time-out, see startBootloader()
 #define NO_INPUT        0x0F
 #define BOOT_BUTTON     0                 // held at plug-in -> bootloader
 
@@ -50,6 +50,7 @@ static __bit    hasPad;                   // gamepad interface present
 static __bit    ledOn = 1;                // lights toggled on
 static __bit    rebootPending;
 static __bit    bootPending;
+static __bit    bootQuick;
 static __bit    brightDirty;              // brightness changed from the pad itself
 static __xdata uint16_t brightTime;
 static __xdata uint16_t profTime;                 // when the profile last changed (LED flash)
@@ -969,8 +970,9 @@ static void CFG_task(void) {
     case CMD_REBOOT:
       rebootPending = 1;
       break;
-    case CMD_BOOTLOADER:
+    case CMD_BOOTLOADER:                                    // offset 1: quick time-out
       bootPending = 1;
+      bootQuick = off & 1;
       break;
     case CMD_PROFILE:
       if(off >= nProf) { status = ST_BAD_RANGE; break; }
@@ -1010,13 +1012,14 @@ static void reboot(void) {
 }
 
 // Start the ROM bootloader. It gives up after about 10 s without a command, timed by
-// timer 0 at Fsys/12, and doesn't set that clock itself; at Fsys/4 it gives up after
-// ~3.3 s (each command still leaves ~20 s). That matters on Windows: when WinUSB
-// starts, it asks GET_STATUS, which the bootloader stalls, and a bug in the ROM then
-// often stalls the next request too (SET_CONFIGURATION), so Windows doesn't start the
-// driver (code 10). The flasher just asks again, and a failed try now costs 3 s.
-static void startBootloader(void) {
-  T2MOD = bT0_CLK;
+// timer 0 at Fsys/12, and doesn't set that clock itself; with quick set it runs at
+// Fsys/4, so it gives up after ~3.3 s (each command still leaves ~20 s). That helps
+// the flasher on Windows: when WinUSB starts, it asks GET_STATUS, which the bootloader
+// stalls, and a bug in the ROM then often stalls the next request too
+// (SET_CONFIGURATION), so Windows doesn't start the driver (code 10). The flasher
+// asks again, and a failed try costs 3 s instead of 10.
+static void startBootloader(uint8_t quick) {
+  if(quick) T2MOD = bT0_CLK;
   BOOT_now();
 }
 
@@ -1025,7 +1028,7 @@ static void startBootloader(void) {
 // plug-in.
 static void enterBootloader(void) {
   uint8_t i;
-  RST_keep(KEEP_BOOTLOADER);                                // even a watchdog reset gets there
+  RST_keep(KEEP_BOOTLOADER + bootQuick);                    // even a watchdog reset gets there
   EA = 0;
   for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
   EA = 1;
@@ -1054,9 +1057,10 @@ void main(void) {
   uint8_t i;
 
 #ifndef TEST_HARNESS
-  if(RST_getKeep() == KEEP_BOOTLOADER) {                    // asked for the bootloader
+  i = RST_getKeep();
+  if((i & 0xFE) == KEEP_BOOTLOADER) {                       // asked for the bootloader
     RST_keep(0);
-    startBootloader();
+    startBootloader(i & 1);
   }
   // Start every boot from a clean chip. After its time-out the ROM bootloader hands
   // over without a reset, leaving its USB and interrupt setup behind; the pad then
@@ -1082,7 +1086,7 @@ void main(void) {
   if(btn & BTN_BIT(BOOT_BUTTON)) {                          // key 1 held at plug-in: bootloader
     NEO_latch();
     for(i = nLeds * 3; i; i--) NEO_sendByte(127);
-    startBootloader();
+    startBootloader(0);                                     // time for Zadig and choosers
   }
 
   persona = wantedPersona();

@@ -88,8 +88,9 @@ the bootloader by itself. If that ever fails, unplug the pad and plug it back in
 holding **key 1**.
 
 On Windows the bootloader sometimes doesn't start on the first try (a bug in the
-CH552's built-in bootloader trips up Windows' driver); the flasher and the setup page
-then simply ask again, which takes about four seconds.
+CH552's built-in bootloader trips up Windows' driver). Both handle it by themselves:
+the flasher asks again within about four seconds; on the setup page just keep the
+browser's device list open, *USB Module* shows up again within about ten seconds.
 
 ### 2. Set up
 

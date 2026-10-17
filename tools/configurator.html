@@ -1969,19 +1969,6 @@ class Isp {
 
 const isBoot = d => d.vendorId === BOOT_VID && d.productId === BOOT_PID;
 
-// Wait for the bootloader. Asking for permission must happen in the click itself;
-// afterwards the browser hands the device over as soon as it shows up.
-async function findBootloader(askNow) {
-  const known = (await navigator.usb.getDevices()).find(isBoot);
-  if (known) return known;
-  if (askNow) return navigator.usb.requestDevice({ filters: [{ vendorId: BOOT_VID, productId: BOOT_PID }] });
-  return new Promise(res => {
-    const on = e => { if (isBoot(e.device)) { navigator.usb.removeEventListener("connect", on); res(e.device); } };
-    navigator.usb.addEventListener("connect", on);
-    setTimeout(() => { navigator.usb.removeEventListener("connect", on); res(null); }, 9000);
-  });
-}
-
 async function flashDevice(usb) {
   const data = fwImage.data;
   await usb.open();
@@ -1998,46 +1985,36 @@ async function flashDevice(usb) {
   } finally { await usb.close().catch(() => {}); }
 }
 
+// The bootloader has no serial number, so the browser asks for it every time. While
+// its list is open, a pad that came back is sent straight back to the bootloader:
+// Windows doesn't start the bootloader's driver about one time in three (a bug in the
+// CH552's ROM), it then gives up after ~10 s and the pad returns.
 async function updateFirmware() {
   if (updating) return;
   if (!("usb" in navigator)) { fwStatus("Firmware updates need Chrome or Edge (WebUSB).", true); return; }
   if (!fwImage) { fwStatus("Pick the firmware file first (Use a file…).", true); return; }
   updating = true;
   $("fwUpdate").disabled = true;
+  let kick = null;
   try {
-    const permitted = (await navigator.usb.getDevices()).some(isBoot);
-    for (let attempt = 1; attempt <= 6; attempt++) {
-      if (dev) {
-        fwStatus(attempt === 1 ? "Switching the pad to update mode…" : `Trying again (${attempt} of 6)…`, false);
-        await command(CMD.BOOT, 0, [], false).catch(() => {});
-      } else if (attempt === 1) fwStatus("Waiting for the pad in update mode (plug it in holding key 1)…", false);
-      let usb;
-      try { usb = await findBootloader(attempt === 1 && !permitted); }
-      catch (e) {
-        if (e.name === "NotFoundError") { fwStatus("No update module chosen. Press Update firmware to try again.", true); return; }
-        throw e;
-      }
-      if (usb) {
-        try {
-          await flashDevice(usb);
-          fwStatus("Done. The pad restarts with the new firmware.", false, 1);
-          toast("Firmware updated");
-          return;
-        } catch (e) {
-          if (e.name === "SecurityError" || /access denied/i.test(e.message))
-            throw new Error("the browser may not use the update module. On Windows, install the WinUSB driver for “USB Module” with Zadig (see below)");
-          console.warn("update attempt failed:", e);
-        }
-      }
-      // Windows sometimes doesn't start the module's driver; it gives up after ~10 s
-      // and the pad comes back on its own. Wait for it, then ask again.
-      fwStatus("The update module didn't start. Waiting for the pad to come back…", false);
-      for (let t = 0; t < 40 && !dev; t++) await sleep(500);
-    }
-    fwStatus("The update didn't start. Plug the pad in while holding key 1, then press Update firmware. On Windows, see the note below.", true);
+    if (dev) {
+      fwStatus("Switching the pad to update mode… Pick “USB Module” in the list when it shows up.", false);
+      await command(CMD.BOOT, 0, [], false).catch(() => {});
+    } else fwStatus("Plug the pad in while holding key 1, then pick “USB Module” in the list.", false);
+    kick = setInterval(() => { if (dev && !reconnecting) command(CMD.BOOT, 0, [], false).catch(() => {}); }, 1500);
+    const usb = (await navigator.usb.getDevices()).find(isBoot)
+      || await navigator.usb.requestDevice({ filters: [{ vendorId: BOOT_VID, productId: BOOT_PID }] });
+    clearInterval(kick); kick = null;
+    await flashDevice(usb);
+    fwStatus("Done. The pad restarts with the new firmware.", false, 1);
+    toast("Firmware updated");
   } catch (e) {
-    fwStatus("Update failed: " + (e.message || e), true);
+    if (e.name === "NotFoundError") fwStatus("No update module picked. Press Update firmware to try again.", true);
+    else if (e.name === "SecurityError" || /access denied/i.test(e.message))
+      fwStatus("The browser may not use the update module. On Windows, install the WinUSB driver for “USB Module” with Zadig (see below).", true);
+    else fwStatus("Update failed: " + (e.message || e) + ". Press Update firmware to try again. A pad whose update broke off waits in update mode whenever it's plugged in.", true);
   } finally {
+    clearInterval(kick);
     updating = false;
     $("fwUpdate").disabled = false;
   }
