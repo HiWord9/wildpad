@@ -1516,36 +1516,39 @@ function renderKnobInspector(box) {
   const body = h("div", { class: "panel-b" });
   box.append(h("div", { class: "panel-h insp-title" }, h("h2", { text: "Knob" }),
     h("span", { class: "pressed-tag", id: "pressedTag", text: "pressed" })), body);
-  const r = model.action(prof, L.right), axis = r.t === T.AXIS;
+  if (L.turns) {
+    const r = model.action(prof, L.right), axis = r.t === T.AXIS;
 
-  const mode = h("div", { class: "seg two" },
-    h("button", { "aria-pressed": !axis ? "true" : "false", onclick: () => { if (axis) change(m => { m.setAction(prof, L.right, A(T.MEDIA, 0xE9)); m.setAction(prof, L.left, A(T.MEDIA, 0xEA)); }, "kmode"); } }, "An action per click"),
-    h("button", { "aria-pressed": axis ? "true" : "false", onclick: () => { if (!axis) change(m => { m.setAction(prof, L.right, A(T.AXIS, 0, 10)); m.setAction(prof, L.left, A(T.NONE)); }, "kmode"); } }, "Gamepad axis"));
-  body.append(field("Turning sends", null, mode));
+    const mode = h("div", { class: "seg two" },
+      h("button", { "aria-pressed": !axis ? "true" : "false", onclick: () => { if (axis) change(m => { m.setAction(prof, L.right, A(T.MEDIA, 0xE9)); m.setAction(prof, L.left, A(T.MEDIA, 0xEA)); }, "kmode"); } }, "An action per click"),
+      h("button", { "aria-pressed": axis ? "true" : "false", onclick: () => { if (!axis) change(m => { m.setAction(prof, L.right, A(T.AXIS, 0, 10)); m.setAction(prof, L.left, A(T.NONE)); }, "kmode"); } }, "Gamepad axis"));
+    body.append(field("Turning sends", null, mode));
 
-  if (!axis) {
-    body.append(field("Turn right", "each click", actionEditor("right", r, a => change(m => m.setAction(prof, L.right, a), "right"), { input: L.right, turn: true })));
-    body.append(field("Turn left", "each click", actionEditor("left", model.action(prof, L.left), a => change(m => m.setAction(prof, L.left, a), "left"), { input: L.left, turn: true })));
-  } else {
-    const range = r.p2, det = Math.max(4, model.b[S.DETENTS]);
-    const axSel = h("select", { class: "plain", style: "width:100%", onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (+e.target.value) | (r.p1 & AXIS_FREE), range)), "axis") },
-      AXES.map(([k, n], idx) => h("option", { value: idx, selected: (r.p1 & 15) === idx, text: n })));
-    body.append(field("Axis", null, axSel));
-    const val = h("span", { class: "val", text: range });
-    const slider = h("input", { type: "range", min: 1, max: 50, value: range, oninput: e => {
-        val.textContent = e.target.value;
-        deg.textContent = `${e.target.value} clicks = ${Math.round(e.target.value * 360 / det)}° of turning`;
-        change(m => m.setAction(prof, L.right, A(T.AXIS, r.p1, +e.target.value)), "range");
-      } });
-    const deg = h("p", { class: "note", text: `${range} clicks = ${Math.round(range * 360 / det)}° of turning` });
-    body.append(field("Clicks from center to full", null, h("div", { class: "slider-row" }, slider, val), deg));
-    const stop = h("label", { class: "switch" }, h("input", { type: "checkbox", checked: !(r.p1 & AXIS_FREE),
-      onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (r.p1 & 15) | (e.target.checked ? 0 : AXIS_FREE), range)), "stop") }), h("span"));
-    body.append(field("Hard stop", null, h("div", { class: "row" }, h("span", { class: "muted small", style: "flex:1", text: "Turning past full doesn't wind up, so turning back responds at once." }), stop)));
-    body.append(h("div", { class: "row", style: "margin:4px 0 6px" },
-      h("button", { class: "btn", disabled: !dev, onclick: () => command(CMD.RECENTER).catch(fail) }, "Center now"),
-      h("span", { class: "muted small", text: "Tip: set the knob press to “Center the knob axis”." })));
+    if (!axis) {
+      body.append(field("Turn right", "each click", actionEditor("right", r, a => change(m => m.setAction(prof, L.right, a), "right"), { input: L.right, turn: true })));
+      body.append(field("Turn left", "each click", actionEditor("left", model.action(prof, L.left), a => change(m => m.setAction(prof, L.left, a), "left"), { input: L.left, turn: true })));
+    } else {
+      const range = r.p2, det = Math.max(4, model.b[S.DETENTS]);
+      const axSel = h("select", { class: "plain", style: "width:100%", onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (+e.target.value) | (r.p1 & AXIS_FREE), range)), "axis") },
+        AXES.map(([k, n], idx) => h("option", { value: idx, selected: (r.p1 & 15) === idx, text: n })));
+      body.append(field("Axis", null, axSel));
+      const val = h("span", { class: "val", text: range });
+      const slider = h("input", { type: "range", min: 1, max: 50, value: range, oninput: e => {
+          val.textContent = e.target.value;
+          deg.textContent = `${e.target.value} clicks = ${Math.round(e.target.value * 360 / det)}° of turning`;
+          change(m => m.setAction(prof, L.right, A(T.AXIS, r.p1, +e.target.value)), "range");
+        } });
+      const deg = h("p", { class: "note", text: `${range} clicks = ${Math.round(range * 360 / det)}° of turning` });
+      body.append(field("Clicks from center to full", null, h("div", { class: "slider-row" }, slider, val), deg));
+      const stop = h("label", { class: "switch" }, h("input", { type: "checkbox", checked: !(r.p1 & AXIS_FREE),
+        onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, (r.p1 & 15) | (e.target.checked ? 0 : AXIS_FREE), range)), "stop") }), h("span"));
+      body.append(field("Hard stop", null, h("div", { class: "row" }, h("span", { class: "muted small", style: "flex:1", text: "Turning past full doesn't wind up, so turning back responds at once." }), stop)));
+      body.append(h("div", { class: "row", style: "margin:4px 0 6px" },
+        h("button", { class: "btn", disabled: !dev, onclick: () => command(CMD.RECENTER).catch(fail) }, "Center now"),
+        h("span", { class: "muted small", text: "Tip: set the knob press to “Center the knob axis”." })));
+    }
   }
+  if (L.knob >= L.buttons) return;                       // the knob doesn't press
   body.append(field("When pressed", null, actionEditor(`press${L.knob}`, model.action(prof, L.knob), a => change(m => m.setAction(prof, L.knob, a), `press${L.knob}`), { input: L.knob })));
   const timing = pressTiming(L.knob, "The knob");
   if (timing) body.lastChild.append(timing);
