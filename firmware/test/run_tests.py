@@ -33,7 +33,8 @@ def simulate(tag, sources, dump_from, dump_len, defines=None):
     sdcc = str(bindir / "sdcc")
     # variables above the harness log area; endpoint buffers stay at 0x0000-0x013F
     cflags = ["-mmcs51", "--model-small", "--xram-size", "0x0A00", "--xram-loc", "0x0600",
-              "--code-size", "0x3800", "-I", str(SRC), "-I", str(INC), "-DFREQ_SYS=16000000"]
+              "--code-size", "0x3800", "-I", str(SRC), "-I", str(INC), "-DFREQ_SYS=16000000",
+              "-DTEST_HARNESS"]
     rels = []
     for src in sources:
         rel = OUT / f"{tag}_{src.stem}.rel"

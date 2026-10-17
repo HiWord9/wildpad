@@ -63,9 +63,22 @@ def need(module, pipname):
 # ===================================================================================
 # Getting into the bootloader
 # ===================================================================================
-def try_software_bootloader():
-    """If Detent firmware is running, ask it to jump into the bootloader.
-    Works with protocol 1 (first release) and protocol 2."""
+def try_software_bootloader(timeout=6):
+    """If Detent firmware is running, ask it to jump into the bootloader. Runs in a
+    thread: a pad that stopped answering USB requests would otherwise hang here."""
+    import threading
+    result = []
+    t = threading.Thread(target=lambda: result.append(_software_bootloader()), daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        print("The pad does not answer. Unplug it and plug it back in while holding key 1.")
+        return False
+    return bool(result and result[0])
+
+
+def _software_bootloader():
+    """Works with every Detent configuration protocol (1, 2 and 3)."""
     try:
         hid = need("hid", "hidapi")
         path = next((d["path"] for d in hid.enumerate(0x1189, 0x8890) if d.get("usage_page") == 0xFF54), None)
@@ -96,10 +109,18 @@ def try_software_bootloader():
 
 def wait_for_firmware(seconds):
     """Wait until the running firmware's configuration interface is back."""
+    import threading
     hid = need("hid", "hidapi")
     end = time.time() + seconds
     while time.time() < end:
-        if any(d.get("usage_page") == 0xFF54 for d in hid.enumerate(0x1189, 0x8890)):
+        found = []
+        t = threading.Thread(target=lambda: found.append(
+            any(d.get("usage_page") == 0xFF54 for d in hid.enumerate(0x1189, 0x8890))), daemon=True)
+        t.start()
+        t.join(3)
+        if t.is_alive():                                # a pad that does not answer
+            return False
+        if found and found[0]:
             time.sleep(0.5)
             return True
         time.sleep(0.2)
@@ -135,11 +156,13 @@ def driver_missing():
     open_zadig()
 
 
-def wait_windows(seconds):
-    """Wait for the bootloader and open it through WinUSB. Returns a transport or None."""
+def wait_windows(seconds, give_up_on_code10=True):
+    """Wait for the bootloader and open it through WinUSB. Returns a transport or None.
+    give_up_on_code10: return at once when Windows fails to start the bootloader's
+    driver (the caller retries); otherwise keep waiting for the next attempt."""
     import winusb
     end = time.time() + seconds
-    seen, last_err = None, None
+    seen, last_err, said = None, None, False
     while time.time() < end:
         inst = winusb.present_instances(CH_VID, CH_PID)
         if inst:
@@ -152,14 +175,19 @@ def wait_windows(seconds):
                     driver_missing()
                     sys.exit("Install the driver, then run flash.bat again.")
             elif winusb.node_problem(inst[0]) == 10:
-                print("  Windows did not start the bootloader driver this time (code 10)")
-                return None
+                if give_up_on_code10:
+                    print("  Windows did not start the bootloader driver this time (code 10)")
+                    return None
+                if not said:
+                    print("  Windows did not start the bootloader driver (code 10): unplug the pad and enter the bootloader again")
+                    said = True
             else:
                 try:
                     return winusb.WinUsbDevice(inst[0])
                 except OSError as e:
                     last_err = e                        # interface not ready yet
         elif seen is not None:
+            said = False
             print(f"  bootloader went away after {time.time() - seen:.1f} s"
                   + (f" (could not open it: {last_err})" if last_err else "") + " - enter it again")
             seen, last_err = None, None
@@ -202,8 +230,8 @@ def wait_pyusb(seconds):
     return None
 
 
-def wait_for_bootloader(seconds):
-    return wait_windows(seconds) if WINDOWS else wait_pyusb(seconds)
+def wait_for_bootloader(seconds, retrying=True):
+    return wait_windows(seconds, retrying) if WINDOWS else wait_pyusb(seconds)
 
 
 # ===================================================================================
@@ -300,7 +328,7 @@ def main():
         print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")
         print("  Detent firmware: hold key 1 while plugging in USB")
         print("  The bootloader only stays about 10 s; flashing starts as soon as it shows up.")
-        t = wait_for_bootloader(60)
+        t = wait_for_bootloader(60, retrying=False)
     if t is None:
         sys.exit("Bootloader not found.")
 

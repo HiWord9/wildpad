@@ -997,8 +997,24 @@ void requestXramClear(void) __naked {
   __endasm;
 }
 
+#define KEEP_CLEAN_START  0x5A
+
 void main(void) {
   uint8_t i;
+
+#ifndef TEST_HARNESS
+  // Start every boot from a clean chip. After its time-out the ROM bootloader hands
+  // over without a reset, leaving its USB and interrupt setup behind; the pad then
+  // enumerated but stopped answering control requests. One software reset per start
+  // (it needs the watchdog running) gives every boot the reset state.
+  if(RST_getKeep() != KEEP_CLEAN_START) {
+    RST_keep(KEEP_CLEAN_START);
+    WDT_start();
+    RST_now();
+    while(1);
+  }
+  RST_keep(0);
+#endif
 
   NEO_init();
   if(BTN_READ() & BTN_BIT(BOARD_BOOT_BUTTON)) {             // held at plug-in: bootloader
