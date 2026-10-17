@@ -48,13 +48,13 @@ SETTINGS_VERSION = 4
 (CMD_INFO, CMD_READ, CMD_WRITE, CMD_COMMIT, CMD_SAVE, CMD_DEFAULTS, CMD_STATUS,
  CMD_RECENTER, CMD_REBOOT, CMD_BOOTLOADER, CMD_PROFILE) = range(1, 12)
 STATUS_TEXT = {1: "unknown command", 2: "invalid settings", 3: "bad offset/length"}
-USB_LAYOUTS = ["keyboard", "keyboard + gamepad", "Xbox 360 controller"]
+USB_LAYOUTS = ["keyboard", "keyboard + gamepad"]
 
 # ----------------------------------------------------------------- settings layout
 S_MAGIC, S_VERSION, S_FLAGS, S_BRIGHTNESS, S_HOLD, S_DEBOUNCE, S_TAP, S_DETENTS, \
     S_START, S_SPEED, S_TURN_HOLD, S_PROFILES = range(12)
 MAGIC = 0xA5
-FLAG_INVERT, FLAG_HALFSTEP, FLAG_XBOX360 = 0x01, 0x02, 0x04
+FLAG_INVERT, FLAG_HALFSTEP = 0x01, 0x02
 ALL_PROFILES = 7
 REC_END, REC_SEQ = 0xFF, 0x80
 ST_TAP, ST_HOLD, ST_WAIT, ST_REL = 0x00, 0x20, 0x40, 0x60
@@ -477,7 +477,7 @@ class Settings:
                 "clicksPerTurn": self.b[S_DETENTS], "profiles": self.np, "startProfile": self.b[S_START] + 1,
                 "lightSpeed": self.b[S_SPEED], "turnHoldMs": (self.b[S_TURN_HOLD] or 8) * 100,
                 "reverseKnob": bool(f & FLAG_INVERT),
-                "halfStep": bool(f & FLAG_HALFSTEP), "xbox360": bool(f & FLAG_XBOX360)},
+                "halfStep": bool(f & FLAG_HALFSTEP)},
             "profiles": [{"color": self.color(p), "light": self.effect(p),
                           "actions": {L.names[i]: self.text(self.action(p, i))
                                       for i in range(L.inputs)},
@@ -505,7 +505,6 @@ class Settings:
         flags = 0
         flags |= FLAG_INVERT if o.get("reverseKnob") else 0
         flags |= FLAG_HALFSTEP if o.get("halfStep") else 0
-        flags |= FLAG_XBOX360 if o.get("xbox360") else 0
         b[S_FLAGS] = flags
         for p, prof in enumerate(j.get("profiles", [])[:self.np]):
             self.set_color(p, prof.get("color", self.color(p)))
@@ -589,8 +588,7 @@ def print_settings(s):
     L, b = s.L, s.b
     print(f"options       brightness {b[S_BRIGHTNESS]}, long press {b[S_HOLD] * 10} ms, "
           f"debounce {b[S_DEBOUNCE]} ms, tap {b[S_TAP]} ms")
-    flags = [n for n, f in (("reverse knob", FLAG_INVERT), ("half step", FLAG_HALFSTEP),
-                            ("Xbox 360 identity", FLAG_XBOX360)) if b[S_FLAGS] & f]
+    flags = [n for n, f in (("reverse knob", FLAG_INVERT), ("half step", FLAG_HALFSTEP)) if b[S_FLAGS] & f]
     print(f"              {b[S_DETENTS]} clicks per turn, light speed {b[S_SPEED]}, "
           f"starts in profile {b[S_START] + 1}" + (", " + ", ".join(flags) if flags else ""))
     for p in range(s.np):
@@ -653,7 +651,7 @@ OPTIONS = {
     "clicks-per-turn": (S_DETENTS, 4, 100, 1), "light-speed": (S_SPEED, 1, 10, 1),
     "turn-hold-ms": (S_TURN_HOLD, 200, 3000, 100),
 }
-FLAG_OPTIONS = {"reverse-knob": FLAG_INVERT, "half-step": FLAG_HALFSTEP, "xbox360": FLAG_XBOX360}
+FLAG_OPTIONS = {"reverse-knob": FLAG_INVERT, "half-step": FLAG_HALFSTEP}
 
 
 def cmd_actions():

@@ -2,8 +2,8 @@
 // USB device layer for CH552
 // ===================================================================================
 // Control endpoint handling is derived from wagiminator's CH55x USB handler
-// (CC BY-SA 3.0, https://github.com/wagiminator), extended with three device
-// personalities, HID class requests, feature-report data stages and Microsoft OS
+// (CC BY-SA 3.0, https://github.com/wagiminator), extended with two device
+// layouts, HID class requests, feature-report data stages and Microsoft OS
 // descriptors.
 
 #pragma nooverlay
@@ -60,14 +60,12 @@ static uint8_t USB_sendDescr(uint8_t len) {
 
 static uint8_t USB_getDescriptor(void) {
   uint8_t idx = setupBuf->wValueL;
-  uint8_t xbox = (USB_personality == USB_XBOX360);
 
   switch(setupBuf->wValueH) {
     case USB_DESCR_TYP_DEVICE:
-      pDescr = xbox ? DevDescrXbox360 : (USB_personality == USB_GAMEPAD ? DevDescrGamepad : DevDescrKeyboard);
+      pDescr = USB_personality == USB_GAMEPAD ? DevDescrGamepad : DevDescrKeyboard;
       return USB_sendDescr(18);
     case USB_DESCR_TYP_CONFIG:
-      if(xbox) { pDescr = CfgDescrXbox360; return USB_sendDescr(XBOX360_CFG_LEN); }
       if(USB_personality == USB_GAMEPAD) { pDescr = CfgDescrGamepad; return USB_sendDescr(GAMEPAD_CFG_LEN); }
       pDescr = CfgDescrKeyboard;
       return USB_sendDescr(KBD_CFG_LEN);
@@ -78,15 +76,14 @@ static uint8_t USB_getDescriptor(void) {
         return USB_sendDescr(18);
       }
       if(idx >= STR_COUNT) return 0xFF;
-      pDescr = xbox ? Xbox360Strings[idx] : Strings[idx];
+      pDescr = Strings[idx];
       return USB_sendDescr(pDescr[0]);
     case USB_DESCR_TYP_REPORT:
-      if(xbox) return 0xFF;
       if(setupBuf->wIndexL == 0) { pDescr = Report0; return USB_sendDescr(Report0Len); }
       if(setupBuf->wIndexL == 1) { pDescr = Report1; return USB_sendDescr(Report1Len); }
       return 0xFF;
     case USB_DESCR_TYP_HID:
-      if(xbox || setupBuf->wIndexL > 1) return 0xFF;
+      if(setupBuf->wIndexL > 1) return 0xFF;
       pDescr = CfgDescrKeyboard + (setupBuf->wIndexL ? CFG_HID1_OFFSET : CFG_HID0_OFFSET);
       return USB_sendDescr(9);
     default:
@@ -97,7 +94,7 @@ static uint8_t USB_getDescriptor(void) {
 // HID class requests for interfaces 0 and 1
 static uint8_t USB_classRequest(void) {
   uint8_t i, len;
-  if(USB_personality == USB_XBOX360 || SetupIntf > 1) return 0xFF;
+  if(SetupIntf > 1) return 0xFF;
   switch(SetupReq) {
     case HID_GET_REPORT:
       len = SetupLen > EP0_SIZE ? EP0_SIZE : SetupLen;
@@ -125,7 +122,7 @@ static uint8_t USB_classRequest(void) {
 }
 
 // Vendor requests: only the Microsoft OS extended compatible ID (gamepad layout).
-// Everything else - including Xbox security requests - is stalled.
+// Everything else is stalled.
 static uint8_t USB_vendorRequest(void) {
   if(USB_personality == USB_GAMEPAD && SetupReq == MS_OS_VENDOR_CODE &&
      (SetupType & 0x80) && setupBuf->wIndexL == 0x04 && setupBuf->wIndexH == 0) {
@@ -341,9 +338,7 @@ void USB_init(uint8_t personality) {
   UEP2_DMA = EP2_ADDR;
   UEP3_DMA = EP3_ADDR;
   UEP4_1_MOD = bUEP1_TX_EN;
-  if(personality == USB_XBOX360)     UEP2_3_MOD = bUEP2_RX_EN;
-  else if(personality == USB_GAMEPAD) UEP2_3_MOD = bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN;
-  else                              UEP2_3_MOD = bUEP3_TX_EN;
+  UEP2_3_MOD = personality == USB_GAMEPAD ? bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN : bUEP3_TX_EN;
   USB_resetEndpoints();
 
   USB_INT_EN |= bUIE_SUSPEND | bUIE_TRANSFER | bUIE_BUS_RST;
@@ -384,7 +379,7 @@ static void USB_load(__xdata uint8_t* dst, __xdata uint8_t* src, uint8_t len) {
 }
 
 uint8_t USB_hidReady(void) {
-  return UsbConfig && !ep1Busy && USB_personality != USB_XBOX360;
+  return UsbConfig && !ep1Busy;
 }
 
 void USB_hidSend(__xdata uint8_t* buf, uint8_t len) {
@@ -395,7 +390,7 @@ void USB_hidSend(__xdata uint8_t* buf, uint8_t len) {
 }
 
 uint8_t USB_statusReady(void) {
-  return UsbConfig && !ep3Busy && USB_personality != USB_XBOX360;
+  return UsbConfig && !ep3Busy;
 }
 
 void USB_statusSend(__xdata uint8_t* buf, uint8_t len) {
@@ -405,22 +400,12 @@ void USB_statusSend(__xdata uint8_t* buf, uint8_t len) {
   UEP3_CTRL = UEP3_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
 }
 
-// XInput reports: EP2 IN (TX buffer at EP2_ADDR + 64) in the gamepad layout, EP1 as Xbox 360
+// XInput reports: EP2 IN (TX buffer at EP2_ADDR + 64), gamepad layout only
 uint8_t USB_padReady(void) {
-  if(!UsbConfig) return 0;
-  if(USB_personality == USB_GAMEPAD) return !ep2Busy;
-  if(USB_personality == USB_XBOX360) return !ep1Busy;
-  return 0;
+  return UsbConfig && !ep2Busy && USB_personality == USB_GAMEPAD;
 }
 
 void USB_padSend(__xdata uint8_t* buf, uint8_t len) {
-  if(USB_personality == USB_XBOX360) {
-    USB_load(EP1_buffer, buf, len);
-    UEP1_T_LEN = len;
-    ep1Busy = 1;
-    UEP1_CTRL = UEP1_CTRL & ~MASK_UEP_T_RES | UEP_T_RES_ACK;
-    return;
-  }
   USB_load(EP2_buffer + 64, buf, len);
   UEP2_T_LEN = len;
   ep2Busy = 1;

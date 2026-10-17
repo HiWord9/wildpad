@@ -110,10 +110,7 @@ window switcher moves along; stop for 0.8 s and the window is picked. The preset
 windows: press and turn* does it the other way round: pressing the knob opens the
 switcher (Alt+Tab with Alt held) and turning moves through it until you let go.
 
-| Plug in while holding | What happens |
-|---|---|
-| key 1 | bootloader, for flashing |
-| key 3 | starts without the Xbox 360 identity (see Settings), so the setup page can reach it |
+Plug the pad in while holding **key 1** to start the bootloader for flashing.
 
 ## Gamepad axis
 
@@ -165,7 +162,7 @@ pad. See [docs/porting.md](docs/porting.md).
 |---|---|
 | `firmware/src/input.c` | Timer interrupt: quadrature decoder, key debounce, millisecond clock |
 | `firmware/src/main.c` | Action engine: profiles, combos, long press, knob step queue, gamepad report, lights, configuration protocol |
-| `firmware/src/usbdev.c`, `descr.c` | USB device with three layouts (keyboard; keyboard + gamepad; Xbox 360 controller) |
+| `firmware/src/usbdev.c`, `descr.c` | USB device with two layouts (keyboard; keyboard + gamepad) |
 | `firmware/src/settings.c` | Settings in the 128-byte Data-Flash, factory settings |
 | `tools/configurator.html` | Setup page (WebHID) |
 | `tools/flash.py`, `winusb.py` | Flasher; talks WinUSB directly on Windows |
@@ -187,7 +184,7 @@ shows how much is used. Long text macros don't fit.
 
 - CH55x support code and the base of the USB handler by
   [Stefan Wagner (wagiminator)](https://github.com/wagiminator).
-- Xbox 360 descriptor layout from [GP2040-CE](https://github.com/OpenStickCommunity/GP2040-CE).
+- XInput interface layout from [GP2040-CE](https://github.com/OpenStickCommunity/GP2040-CE).
 - Bootloader protocol from chprog by Stefan Wagner, based on chflasher and wchprog.
 - Pinout and bootloader entry cross-checked with
   [eccherda/ch552g_mini_keyboard](https://github.com/eccherda/ch552g_mini_keyboard)

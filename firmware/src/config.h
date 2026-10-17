@@ -19,7 +19,6 @@
 #define BOARD_BUTTONS       4           // keys + knob switch (max MAX_BUTTONS)
 #define BOARD_KNOB_BUTTON   3           // index of the knob push switch
 #define BOARD_BOOT_BUTTON   0           // hold while plugging in -> bootloader
-#define BOARD_RESCUE_BUTTON 2           // hold while plugging in -> no Xbox 360 identity once
 
 #define PIN_NEO             P34         // WS2812 chain (GRB)
 #define PIN_KEY1            P11
@@ -48,14 +47,7 @@
 #define USB_VENDOR_ID       0x1189
 #define USB_PRODUCT_ID      0x8890
 #define USB_BCD_KEYBOARD    0x0100
-#define USB_BCD_GAMEPAD       0x0101
-
-// Optional: the whole device impersonates a wired Xbox 360 controller, for systems
-// that only accept that (e.g. Linux xpad). Keys and configuration are unavailable
-// then; plug in holding BOARD_RESCUE_BUTTON to configure again.
-#define XBOX360_VENDOR_ID    0x045E
-#define XBOX360_PRODUCT_ID   0x028E
-#define XBOX360_BCD          0x0114
+#define USB_BCD_GAMEPAD     0x0101
 
 #define USB_MAX_POWER_mA    100
 #define MS_OS_VENDOR_CODE   0x5A        // bRequest for Microsoft OS feature descriptors

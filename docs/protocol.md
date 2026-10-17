@@ -56,7 +56,7 @@ INFO payload:
 | 5 | index of the knob switch |
 | 6 | settings size (128) |
 | 7 | maximum number of profiles |
-| 8 | USB layout: 0 keyboard, 1 keyboard + gamepad, 2 Xbox 360 controller |
+| 8 | USB layout: 0 keyboard, 1 keyboard + gamepad |
 | 9 | number of LEDs |
 | 10 | bytes for records (combos, sequences) with all profiles in use |
 | 11 | offset of the first profile |
@@ -79,7 +79,7 @@ bytes from offset 12); other boards use the sizes from INFO.
 |---|---|---|
 | 0 | 1 | magic `0xA5` |
 | 1 | 1 | settings version `4` |
-| 2 | 1 | flags: 1 reverse knob, 2 half-step knob, 4 Xbox 360 identity |
+| 2 | 1 | flags: 1 reverse knob, 2 half-step knob (other bits reserved, keep 0) |
 | 3 | 1 | LED brightness (0–255) |
 | 4 | 1 | hold time for long presses, 10 ms units (10–100) |
 | 5 | 1 | debounce in ms (1–30) |
@@ -166,7 +166,7 @@ present whenever any action, combo or step uses type 6 or 7.
   "format": "wildpad-settings", "version": 4,
   "options": { "brightness": 128, "holdMs": 300, "debounceMs": 5, "tapMs": 4,
                "clicksPerTurn": 20, "profiles": 3, "startProfile": 1, "lightSpeed": 5,
-               "turnHoldMs": 800, "reverseKnob": false, "halfStep": false, "xbox360": false },
+               "turnHoldMs": 800, "reverseKnob": false, "halfStep": false },
   "profiles": [ { "color": "#00aaff", "light": "solid",
                   "actions": { "key1": "seq:tap pad:a; wait 60; tap pad:a; hold pad:rt; on release; tap key:x",
                                "knob": "media:mute",

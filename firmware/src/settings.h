@@ -61,7 +61,6 @@
 // S_FLAGS
 #define FLAG_INVERT         0x01        // swap knob direction
 #define FLAG_HALFSTEP       0x02        // encoder rests at every half quadrature cycle
-#define FLAG_XBOX360        0x04        // appear as a plain Xbox 360 controller (no keys)
 
 // Light effects (per profile)
 #define LED_OFF             0

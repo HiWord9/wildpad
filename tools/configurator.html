@@ -504,12 +504,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
             <div class="seg right" id="optProfiles" style="min-width:150px"></div></div>
           <div class="setting"><div><h3>Profile after plugging in</h3><p>The pad starts in this profile.</p></div>
             <select class="plain right" id="optStart"></select></div>
-          <div class="setting"><div><h3>Xbox 360 controller identity</h3><p>Only for systems that don't recognize the gamepad otherwise, such as Linux. Keys, mouse and this page stop working while it's on. To turn it off again, plug the pad in while holding key 3.</p></div>
-            <label class="switch right"><input type="checkbox" id="optXbox"><span></span></label></div>
-          <div class="confirm hidden" id="xboxConfirm">
-            <span>The pad will only work as a gamepad, and this page loses it until you plug it in holding key 3.</span>
-            <button class="btn danger" id="xboxYes">Turn on</button><button class="btn" id="xboxNo">Cancel</button>
-          </div>
         </div>
       </div>
       <div class="panel">
@@ -550,7 +544,7 @@ const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 
 const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11 };
 const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offset or length" };
 const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10, PROFILES: 11 };
-const FLAG = { INVERT: 1, HALF: 2, XBOX: 4 };
+const FLAG = { INVERT: 1, HALF: 2 };
 const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10, KEY_HOLD: 11, SEQ: 12 };
 // records after the profiles: combos and sequences (see docs/protocol.md)
 const REC_END = 0xFF, REC_SEQ = 0x80, ST_TAP = 0x00, ST_HOLD = 0x20, ST_WAIT = 0x40, ST_REL = 0x60;
@@ -927,7 +921,7 @@ class Model {
       format: "wildpad-settings", version: SVER, board: { inputs: names },
       options: { brightness: b[S.BRIGHT], holdMs: b[S.HOLD] * 10, debounceMs: b[S.DEBOUNCE], tapMs: b[S.TAP],
         clicksPerTurn: b[S.DETENTS], profiles: this.np, startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED], turnHoldMs: (b[S.TURN_HOLD] || 8) * 100,
-        reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF), xbox360: !!(f & FLAG.XBOX) },
+        reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF) },
       profiles: Array.from({ length: this.np }, (_, p) => ({ color: this.color(p), light: EFFECTS[this.effect(p)][0],
         actions: Object.fromEntries(names.map((n, i) => [n, actionToText(this.action(p, i), this)])),
         rightAway: names.filter((n, i) => this.now(p, i)) })),
@@ -947,7 +941,7 @@ class Model {
     b[S.START] = clamp((o.startProfile ?? 1) - 1, 0, this.np - 1, 0);
     b[S.SPEED] = clamp(o.lightSpeed, 1, 10, b[S.SPEED]);
     b[S.TURN_HOLD] = clamp(Math.round((o.turnHoldMs ?? (b[S.TURN_HOLD] || 8) * 100) / 100), 2, 30, 8);
-    b[S.FLAGS] = (o.reverseKnob ? FLAG.INVERT : 0) | (o.halfStep ? FLAG.HALF : 0) | (o.xbox360 ? FLAG.XBOX : 0);
+    b[S.FLAGS] = (o.reverseKnob ? FLAG.INVERT : 0) | (o.halfStep ? FLAG.HALF : 0);
     (j.profiles || []).slice(0, this.np).forEach((pr, p) => {
       if (/^#[0-9a-f]{6}$/i.test(pr.color || "")) this.setColor(p, pr.color.toLowerCase());
       const e = EFFECTS.findIndex(x => x[0] === pr.light); if (e >= 0) this.setEffect(p, e);
@@ -1769,7 +1763,6 @@ function renderSettings() {
   const b = model.b;
   $("optInvert").checked = !!(b[S.FLAGS] & FLAG.INVERT);
   $("optHalf").checked = !!(b[S.FLAGS] & FLAG.HALF);
-  $("optXbox").checked = !!(b[S.FLAGS] & FLAG.XBOX);
   $("optDetents").value = b[S.DETENTS]; $("optDetentsVal").textContent = b[S.DETENTS];
   $("optHold").value = b[S.HOLD]; $("optHoldVal").textContent = (b[S.HOLD] / 100).toFixed(2) + " s";
   $("optTap").value = b[S.TAP]; $("optTapVal").textContent = b[S.TAP] + " ms";
@@ -1785,7 +1778,7 @@ function renderSettings() {
       if (prof > k) selectProfile(0);
       toast(`${k + 1} profile${k ? "s" : ""}: ${model.recSize()} bytes for combos and steps` + (lost ? `. Removed ${lost} combo${lost > 1 ? "s" : ""} of the dropped profiles.` : ""));
     } }, String(k + 1))));
-  const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad", "Xbox 360 controller"][L.usb] || "?";
+  const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad"][L.usb] || "?";
   $("fwInfo").replaceChildren(
     h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Wildpad ${L.fw}` : "Not connected (demo)" }),
     h("dt", { text: "Board" }), h("dd", { text: `${L.keys.length} keys and a knob, ${L.leds} lights` }),
@@ -1797,16 +1790,6 @@ function renderSettings() {
 function bindSettings() {
   const flag = (id, f) => $(id).addEventListener("change", e => change(m => { m.b[S.FLAGS] = e.target.checked ? m.b[S.FLAGS] | f : m.b[S.FLAGS] & ~f; }, id));
   flag("optInvert", FLAG.INVERT); flag("optHalf", FLAG.HALF);
-  const setXbox = on => change(m => { m.b[S.FLAGS] = on ? m.b[S.FLAGS] | FLAG.XBOX : m.b[S.FLAGS] & ~FLAG.XBOX; }, "xbox");
-  $("optXbox").addEventListener("change", e => {
-    if (e.target.checked) { e.target.checked = false; $("xboxConfirm").classList.remove("hidden"); return; }
-    setXbox(false);
-  });
-  $("xboxYes").addEventListener("click", () => {
-    $("xboxConfirm").classList.add("hidden"); setXbox(true);
-    toast(model.usesGamepad() ? "The pad reconnects as an Xbox 360 controller." : "Takes effect once an action uses the gamepad.");
-  });
-  $("xboxNo").addEventListener("click", () => $("xboxConfirm").classList.add("hidden"));
   const num = (id, off) => $(id).addEventListener("input", e => change(m => { m.b[off] = +e.target.value; }, id));
   num("optDetents", S.DETENTS); num("optHold", S.HOLD); num("optTap", S.TAP); num("optDebounce", S.DEBOUNCE); num("optTurnHold", S.TURN_HOLD);
   num("brightness", S.BRIGHT); num("speed", S.SPEED);

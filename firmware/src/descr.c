@@ -1,9 +1,9 @@
 // ===================================================================================
 // USB descriptors
 // ===================================================================================
-// The Xbox 360 interface layout is taken from GP2040-CE (MIT,
-// https://github.com/OpenStickCommunity/GP2040-CE), which mirrors a genuine wired
-// controller. The Microsoft OS descriptor format follows [MS-XUSBI] 2.2.2.
+// The XInput interface follows a genuine wired Xbox 360 controller (layout as in
+// GP2040-CE, MIT, https://github.com/OpenStickCommunity/GP2040-CE). The Microsoft OS
+// descriptor format follows [MS-XUSBI] 2.2.2.
 
 #include "config.h"
 #include "descr.h"
@@ -16,8 +16,7 @@
   LO(vid), HI(vid), LO(pid), HI(pid), LO(bcd), HI(bcd), 1, 2, 3, 1 }
 
 __code uint8_t DevDescrKeyboard[18] = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_KEYBOARD, 0x0200, 0x00);
-__code uint8_t DevDescrGamepad[18]    = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_GAMEPAD,    0x0200, 0x00);
-__code uint8_t DevDescrXbox360[18]   = DEV_DESCR(XBOX360_VENDOR_ID, XBOX360_PRODUCT_ID, XBOX360_BCD, 0x0200, 0xFF);
+__code uint8_t DevDescrGamepad[18]  = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_GAMEPAD,    0x0200, 0x00);
 
 // ===================================================================================
 // HID report descriptors
@@ -94,31 +93,6 @@ __code uint8_t CfgDescrGamepad[GAMEPAD_CFG_LEN] = {
   0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08            // EP2 OUT (rumble / LED)
 };
 
-__code uint8_t CfgDescrXbox360[XBOX360_CFG_LEN] = {
-  0x09, 0x02, 0x99, 0x00, 0x04, 0x01, 0x00, 0xA0, 0xFA,
-  // Interface 0: control data (XInput)
-  0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
-  0x11, 0x21, 0x00, 0x01, 0x01, 0x25, 0x81, 0x14, 0x00, 0x00, 0x00, 0x00, 0x13,
-  0x02, 0x08, 0x00, 0x00,
-  0x07, 0x05, 0x81, 0x03, 0x20, 0x00, 0x01,
-  0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08,
-  // Interface 1: headset / audio
-  0x09, 0x04, 0x01, 0x00, 0x04, 0xFF, 0x5D, 0x03, 0x00,
-  0x1B, 0x21, 0x00, 0x01, 0x01, 0x01, 0x83, 0x40, 0x01, 0x04, 0x20, 0x16, 0x85,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x07, 0x05, 0x83, 0x03, 0x20, 0x00, 0x02,
-  0x07, 0x05, 0x04, 0x03, 0x20, 0x00, 0x04,
-  0x07, 0x05, 0x85, 0x03, 0x20, 0x00, 0x40,
-  0x07, 0x05, 0x06, 0x03, 0x20, 0x00, 0x10,
-  // Interface 2: plug-in module
-  0x09, 0x04, 0x02, 0x00, 0x01, 0xFF, 0x5D, 0x02, 0x00,
-  0x09, 0x21, 0x00, 0x01, 0x01, 0x22, 0x86, 0x03, 0x00,
-  0x07, 0x05, 0x86, 0x03, 0x20, 0x00, 0x10,
-  // Interface 3: security method
-  0x09, 0x04, 0x03, 0x00, 0x00, 0xFF, 0xFD, 0x13, 0x04,
-  0x06, 0x41, 0x00, 0x01, 0x01, 0x03
-};
-
 // ===================================================================================
 // Microsoft OS 1.0 descriptors (gamepad layout only)
 // ===================================================================================
@@ -148,19 +122,7 @@ static __code uint16_t StrProd[]  = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p
 static __code uint16_t StrSer[]   = { (3 << 8) | (2 + 2 * 8), 'W','I','L','D','P','A','D','1' };
 static __code uint16_t StrItf[]   = { (3 << 8) | (2 + 2 * 14),
   'W','i','l','d','p','a','d',' ','c','o','n','f','i','g' };
-static __code uint16_t StrPadProd[] = { (3 << 8) | (2 + 2 * 10),
-  'C','o','n','t','r','o','l','l','e','r' };
-static __code uint16_t StrPadSer[]  = { (3 << 8) | (2 + 2 * 7), '0','8','F','E','C','9','3' };
-static __code uint16_t StrPadSec[]  = { (3 << 8) | (2 + 2 * 36),
-  'X','b','o','x',' ','S','e','c','u','r','i','t','y',' ','M','e','t','h','o','d',
-  ' ','3',',',' ','V','e','r','s','i','o','n',' ','1','.','0','0' };
-
 __code uint8_t* __code Strings[STR_COUNT] = {
   (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrProd,
   (__code uint8_t*)StrSer,  (__code uint8_t*)StrItf
-};
-
-__code uint8_t* __code Xbox360Strings[STR_COUNT] = {
-  (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrPadProd,
-  (__code uint8_t*)StrPadSer, (__code uint8_t*)StrPadSec
 };

@@ -12,7 +12,7 @@ board specific in [firmware/src/config.h](../firmware/src/config.h).
      layout adapts: fewer profiles or combo slots fit when there are many buttons
      (all within 128 bytes), and the setup page reads the layout from the pad.
      Up to 8 buttons are supported (the button state is one byte).
-   - `BOARD_KNOB_BUTTON`, `BOARD_BOOT_BUTTON`, `BOARD_RESCUE_BUTTON`: button indexes.
+   - `BOARD_KNOB_BUTTON`, `BOARD_BOOT_BUTTON`: button indexes.
      The factory settings in `settings.c` assume three keys plus the knob; adjust
      `DEF_ACTIONS` / `DEF_COMBOS` for other layouts.
    - `PIN_*` and `BTN_READ()`: one bit per button, pressed = 1.

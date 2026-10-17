@@ -15,9 +15,7 @@
 //  - the gamepad interface is added automatically when a profile uses it
 //  - configuration over a vendor HID feature report, stored in Data-Flash
 //
-// Plug in holding button BOARD_BOOT_BUTTON   -> USB bootloader
-// Plug in holding button BOARD_RESCUE_BUTTON -> without the Xbox 360 identity, so the
-//                                             configurator can reach the pad again
+// Plug in holding button BOARD_BOOT_BUTTON -> USB bootloader
 
 #include "ch554.h"
 #include "config.h"
@@ -873,8 +871,7 @@ static __code uint8_t INFO[16] = {
 static __xdata uint8_t persona;
 
 static uint8_t wantedPersona(void) {
-  if(!SET_padUsed) return USB_KEYBOARD;
-  return (CFG_FLAGS & FLAG_XBOX360) ? USB_XBOX360 : USB_GAMEPAD;
+  return SET_padUsed ? USB_GAMEPAD : USB_KEYBOARD;
 }
 
 static void CFG_task(void) {
@@ -1035,7 +1032,6 @@ void main(void) {
   CLK_config();
   DLY_ms(5);
   SET_load();
-  if(BTN_READ() & BTN_BIT(BOARD_RESCUE_BUTTON)) CFG_FLAGS &= ~FLAG_XBOX360;   // not saved
   prof = cfg[S_START_PROFILE];
   applySettings();
 
