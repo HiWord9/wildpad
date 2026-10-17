@@ -40,15 +40,19 @@ ZADIG_URL = "https://github.com/pbatard/libwdi/releases/download/v1.5.1/zadig-2.
 ZADIG_SHA256 = "4ecaa95df3da3621486a043aef8b3050b8bafe7c901402871e816229ef82039b"
 
 DRIVER_STEPS = """
-The bootloader (USB ID 4348:55E0) needs the WinUSB driver. This is needed once per PC,
+The chip's bootloader (USB ID 4348:55E0) needs a driver. This is needed once per PC,
 and it can be installed without the macropad connected:
 
   1. Zadig opens now (allow admin rights; it is downloaded on first use).
   2. Menu  Device -> Create New Device
   3. Name field (top): CH552 bootloader
      USB ID fields:    4348    55E0     (leave the third box empty)
-  4. Driver (right of the green arrow): WinUSB
-  5. Click "Install Driver" and wait for "The driver was installed successfully".
+  4. Driver (right of the green arrow, small arrows): libusb-win32
+     (WinUSB works too and lets the browser install as well, but Windows often fails
+     to start it for this bootloader; with libusb-win32 it starts every time)
+  5. The big button must say "Install Driver" - if it says "Install WCID Driver",
+     choose "Install Driver" with the arrow on its right. Click it and wait for
+     "The driver was installed successfully".
 """
 
 
@@ -144,18 +148,28 @@ def open_zadig():
 
 
 def winusb_installed():
-    """True if some 4348:55E0 device node already uses WinUSB (driver set up before)."""
+    """True if some 4348:55E0 device node already has a usable driver (WinUSB or
+    libusb-win32, both set up with Zadig)."""
     ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     r = subprocess.run([str(ps), "-NoProfile", "-Command",
                         "Get-PnpDevice | Where-Object InstanceId -match 'VID_4348&PID_55E0' | ForEach-Object { "
                         "(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName DEVPKEY_Device_Service).Data }"],
                        capture_output=True, text=True)
-    return "winusb" in r.stdout.lower()
+    out = r.stdout.lower()
+    return "winusb" in out or "libusb0" in out
 
 
 def driver_missing():
     print(DRIVER_STEPS)
     open_zadig()
+
+
+def libusb0_bootloader():
+    need("usb", "pyusb")
+    import usb.core
+    import usb.backend.libusb0
+    dev = usb.core.find(idVendor=CH_VID, idProduct=CH_PID, backend=usb.backend.libusb0.get_backend())
+    return PyUsbTransport(dev) if dev is not None else None
 
 
 def wait_windows(seconds, give_up_on_code10=True):
@@ -171,6 +185,14 @@ def wait_windows(seconds, give_up_on_code10=True):
             if seen is None:
                 seen = time.time()
                 print("  bootloader connected")
+            if (winusb.service(inst[0]) or "").lower() == "libusb0":
+                # libusb-win32 doesn't ask the bootloader GET_STATUS when it starts,
+                # so it never runs into the code 10 failure WinUSB often does
+                t = libusb0_bootloader()
+                if t is not None:
+                    return t
+                time.sleep(0.05)
+                continue
             if winusb.interface_guid(inst[0]) is None:
                 if time.time() - seen > 3:              # give Windows a moment to bind
                     print("\nThe bootloader has no WinUSB driver yet.")

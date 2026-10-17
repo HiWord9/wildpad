@@ -72,6 +72,15 @@ def node_problem(instance):
     return problem.value
 
 
+def service(instance):
+    """Name of the driver service bound to a device node ("WinUSB", "libusb0", ...)."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SYSTEM\CurrentControlSet\Enum\{instance}") as key:
+            return winreg.QueryValueEx(key, "Service")[0]
+    except OSError:
+        return None
+
+
 def interface_guid(instance):
     """DeviceInterfaceGUID(s) registered by the WinUSB install (None = no driver)."""
     try:

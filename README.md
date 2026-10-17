@@ -71,10 +71,15 @@ and Chrome, Edge or Opera. Download the latest release and unzip it.
 1. Remove the four screws on the bottom and lift the bottom plate.
 2. Find the **R12** pads next to the WCH chip: two empty pads with no resistor
    ([photo](docs/r12_short.jpeg)).
-3. Run **`flash.bat`**. The first time on a PC it opens Zadig to install the WinUSB
-   driver for the bootloader; no macropad needs to be connected for that:
-   *Device → Create New Device*, name `CH552 bootloader`, USB ID `4348` `55E0`,
-   driver **WinUSB**, *Install Driver*. Then press Enter in the flasher window.
+3. Easiest: open the setup page (`configure.bat`) and press **Install on a new pad**;
+   it walks you through the rest in the browser. Or run **`flash.bat`**. Either way,
+   the first time on a PC Windows needs a driver for the chip's bootloader, set up
+   with Zadig (no macropad needs to be connected): *Device → Create New Device*, name
+   `CH552 bootloader`, USB ID `4348` `55E0`, driver **WinUSB** for the browser or
+   **libusb-win32** for `flash.bat`, then the big button must say *Install Driver*
+   (if it says *Install WCID Driver*, switch it with the arrow on its right). With
+   WinUSB, Windows doesn't start the bootloader's driver every time, so the browser
+   may need a few plug-ins; with libusb-win32 `flash.bat` works every time.
 4. Short the R12 pads (tweezers or a paper clip) and, **while holding them shorted**,
    plug in the USB cable. The LEDs stay dark in the bootloader; that's normal.
    (Connecting chip pin P1.5 to GND while plugging in also works.)

@@ -2095,14 +2095,14 @@ async function updateFirmware() {
 // From the factory firmware: the chip's own bootloader, entered by shorting two pads
 // while plugging in. Windows needs the WinUSB driver for it once (Zadig).
 const isWindows = /Windows/i.test(navigator.userAgent);
-const guide = { step: 0, board: 1, busy: false, done: false };
+const guide = { step: 0, board: 1, busy: false, done: false, alt: false };
 
 function guideSteps() {
   return [["pad", "Your pad"], ...(isWindows ? [["driver", "Driver"]] : []), ["open", "Open it"], ["install", "Install"], ["done", "Done"]];
 }
 
 function openGuide() {
-  Object.assign(guide, { step: 0, busy: false, done: false });
+  Object.assign(guide, { step: 0, busy: false, done: false, alt: false });
   renderGuide();
   $("guide").showModal();
 }
@@ -2136,7 +2136,8 @@ function renderGuide() {
         h("li", {}, "Download ", h("a", { href: "https://zadig.akeo.ie", target: "_blank", rel: "noopener", text: "Zadig" }), " and start it. It needs no installation; allow it to make changes."),
         h("li", {}, "In its menu choose ", h("b", { text: "Device → Create New Device" }), "."),
         h("li", {}, "Type the name ", copyChip("CH552 bootloader"), " into the long field, and ", copyChip("4348"), " and ", copyChip("55E0"), " into the two small USB ID fields."),
-        h("li", {}, "Right of the green arrow, pick ", h("b", { text: "WinUSB" }), ", then press ", h("b", { text: "Install Driver" }), " and wait for “The driver was installed successfully”.")),
+        h("li", {}, "Right of the green arrow, pick ", h("b", { text: "WinUSB" }), " with the small arrows."),
+        h("li", {}, "Check what the big button says. It must be ", h("b", { text: "Install Driver" }), ". If it says Install WCID Driver, open the ▼ on its right and choose Install Driver. Press it and wait for “The driver was installed successfully”.")),
       h("p", { class: "tip", text: "Done this before on this computer? Then just go on." }));
   } else if (key === "open") {
     const three = guide.board === 1;
@@ -2146,6 +2147,19 @@ function renderGuide() {
       three ? h("img", { class: "photo", src: "../docs/r12_short.jpeg", alt: "Circuit board: the two empty R12 pads next to the chip, circled in red", onclick: e => window.open(e.target.src) }) : null,
       three ? null : h("p", { class: "tip", text: "No photo of this board yet. Try first without opening it: on many 6-key pads one key is wired to the same chip pin, so holding key 3 (or key 4) while plugging in does the same. Otherwise: the pads connect chip pin P1.5 to ground (GND), and connecting those two directly works too." }),
       P("You'll need something small that conducts: tweezers, a paper clip or a piece of wire."));
+  } else if (key === "install" && guide.alt) {
+    fill(h("h3", { text: "Install with flash.bat (Windows)" }),
+      P("The same install without the browser. It uses another driver (libusb-win32), with which Windows starts the chip's installer every time."),
+      h("ol", { class: "do" },
+        h("li", {}, "Download the Wildpad zip and unpack it. ", h("b", { text: "flash.bat" }), " needs ", h("a", { href: "https://www.python.org/downloads/", target: "_blank", rel: "noopener", text: "Python 3" }), "."),
+        h("li", {}, "In Zadig, again ", h("b", { text: "Device → Create New Device" }), ", ", copyChip("CH552 bootloader"), ", ", copyChip("4348"), " ", copyChip("55E0"), "."),
+        h("li", {}, "With the small arrows pick ", h("b", { text: "libusb-win32" }), ". The big button must say ", h("b", { text: "Install Driver" }), " (▼ to change it). Press it."),
+        h("li", {}, "Start ", h("b", { text: "flash.bat" }), ". When it waits for the bootloader, connect the two pads and plug the pad in."),
+        h("li", {}, "It says DONE after a few seconds. Then come back here and press the button below.")),
+      h("p", { class: "tip", text: "With libusb-win32 the browser can't reach the chip's installer any more; that's fine. Updates later run from this page through the pad's own update mode and need no driver at all." }),
+      h("div", { class: "row" },
+        h("button", { class: "btn", text: "Back to the browser install", onclick: () => { guide.alt = false; renderGuide(); } }),
+        h("button", { class: "btn primary", text: "flash.bat said DONE", onclick: () => { guide.done = true; guide.alt = false; guide.step++; renderGuide(); } })));
   } else if (key === "install") {
     fill(h("h3", { text: "Install" }),
       h("ol", { class: "do" },
@@ -2155,7 +2169,10 @@ function renderGuide() {
       h("div", { class: "row" }, h("button", { class: "btn primary", id: "gStart", text: "Start", disabled: guide.busy || guide.done || !fwImage || !("usb" in navigator), onclick: guideInstall })),
       h("div", { class: "fw-bar hidden", id: "gBar" }, h("i")),
       h("p", { class: "fw-status", id: "gStatus", role: "status", "aria-live": "polite" }),
-      h("p", { class: "tip", text: "USB Module doesn't show up within a few seconds? Unplug the pad and plug it in again while connecting the pads. Windows sometimes doesn't start the driver for the chip's installer on the first go." }));
+      h("p", { class: "tip" }, isWindows
+        ? "USB Module doesn't show up although Windows made its connect sound? Unplug the pad and plug it in again while connecting the pads: Windows doesn't start the driver for the chip's installer every time, so it can take a few goes. No sound at all means the pads weren't connected."
+        : "USB Module doesn't show up? Unplug the pad and plug it in again while connecting the pads firmly."),
+      isWindows ? h("p", {}, h("a", { href: "#", text: "Still no luck? Install with flash.bat instead", onclick: e => { e.preventDefault(); guide.alt = true; renderGuide(); } })) : null);
   } else {
     fill(h("h3", { text: "Done" }),
       P("The pad restarts with Wildpad. Put the bottom plate back on; you won't need to open it again: updates now run from this page."),
