@@ -17,6 +17,19 @@
 
 __code uint8_t DevDescrKeyboard[18] = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_KEYBOARD, 0x0200, 0x00);
 __code uint8_t DevDescrGamepad[18]  = DEV_DESCR(USB_VENDOR_ID, USB_PRODUCT_ID, USB_BCD_GAMEPAD,    0x0200, 0x00);
+// Own serial number: Windows keeps it apart from the keyboard device and its driver.
+// USB 2.0, or Windows doesn't ask for the Microsoft OS descriptors.
+__code uint8_t DevDescrUpdate[18]   = {
+  0x12, 0x01, 0x00, 0x02, 0, 0, 0, 0x40, LO(USB_VENDOR_ID), HI(USB_VENDOR_ID),
+  LO(USB_PRODUCT_ID), HI(USB_PRODUCT_ID), LO(USB_BCD_UPDATE), HI(USB_BCD_UPDATE), 1, 2, 5, 1 };
+
+// Update layout: the ROM bootloader's endpoints (EP2 bulk, 64 bytes each way)
+__code uint8_t CfgDescrUpdate[UPDATE_CFG_LEN] = {
+  0x09, 0x02, UPDATE_CFG_LEN, 0x00, 0x01, 0x01, 0x00, 0x80, USB_MAX_POWER_mA / 2,
+  0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x00, 0x00, 0x00,
+  0x07, 0x05, 0x82, 0x02, 0x40, 0x00, 0x00,
+  0x07, 0x05, 0x02, 0x02, 0x40, 0x00, 0x00
+};
 
 // ===================================================================================
 // HID report descriptors
@@ -100,6 +113,20 @@ __code uint8_t MsOsString[18] = {
   0x12, 0x03, 'M', 0, 'S', 0, 'F', 0, 'T', 0, '1', 0, '0', 0, '0', 0, MS_OS_VENDOR_CODE, 0x00
 };
 
+__code uint8_t MsCompatIdUpdate[40] = {
+  0x28, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x01,
+  0, 0, 0, 0, 0, 0, 0,
+  0x00,                         // first interface
+  0x01,
+  'W', 'I', 'N', 'U', 'S', 'B', 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0
+};
+
+
+// Extended properties: none (an answer, so the request isn't stalled)
+__code uint8_t MsNoProps[10] = { 0x0A, 0, 0, 0, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00 };
+
 __code uint8_t MsCompatId[40] = {
   0x28, 0x00, 0x00, 0x00,       // dwLength
   0x00, 0x01,                   // bcdVersion 1.00
@@ -117,12 +144,10 @@ __code uint8_t MsCompatId[40] = {
 // String descriptors
 // ===================================================================================
 static __code uint16_t StrLang[]  = { (3 << 8) | 4, 0x0409 };
-static __code uint16_t StrManuf[] = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p','a','d' };
-static __code uint16_t StrProd[]  = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p','a','d' };
+static __code uint16_t StrName[]  = { (3 << 8) | (2 + 2 * 7), 'W','i','l','d','p','a','d' };
 static __code uint16_t StrSer[]   = { (3 << 8) | (2 + 2 * 8), 'W','I','L','D','P','A','D','1' };
-static __code uint16_t StrItf[]   = { (3 << 8) | (2 + 2 * 14),
-  'W','i','l','d','p','a','d',' ','c','o','n','f','i','g' };
+static __code uint16_t StrSerUpd[] = { (3 << 8) | (2 + 2 * 8), 'W','I','L','D','P','A','D','U' };
 __code uint8_t* __code Strings[STR_COUNT] = {
-  (__code uint8_t*)StrLang, (__code uint8_t*)StrManuf, (__code uint8_t*)StrProd,
-  (__code uint8_t*)StrSer,  (__code uint8_t*)StrItf
+  (__code uint8_t*)StrLang, (__code uint8_t*)StrName, (__code uint8_t*)StrName,   // maker, product
+  (__code uint8_t*)StrSer,  (__code uint8_t*)StrName, (__code uint8_t*)StrSerUpd  // config interface
 };

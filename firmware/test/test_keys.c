@@ -17,6 +17,8 @@ void fw_main(void);
 
 // ---------------- USB stubs ----------------
 uint8_t USB_personality;
+volatile uint8_t USB_stallTicks;
+volatile __bit USB_updateGo;
 volatile __bit USB_featureNew;
 __xdata uint8_t USB_featureOut[FEATURE_REPORT_LEN];
 __xdata uint8_t USB_featureIn[FEATURE_REPORT_LEN];

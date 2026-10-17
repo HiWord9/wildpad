@@ -9,6 +9,7 @@
 // Device layouts (see descr.h)
 #define USB_KEYBOARD    0
 #define USB_GAMEPAD     1
+#define USB_UPDATE      2
 
 // Endpoint buffers at the bottom of XRAM (variables start at XRAM_LOC = 0x0140).
 // EP2 has RX at EP2_ADDR and TX at EP2_ADDR + 64 when both directions are enabled.
@@ -25,6 +26,8 @@ __xdata __at (EP3_ADDR) uint8_t EP3_buffer[64];
 
 extern uint8_t USB_personality;
 extern volatile __bit USB_featureNew;                       // host wrote a feature report
+extern volatile __bit USB_updateGo;                         // update layout: host says go
+extern volatile uint8_t USB_stallTicks;                     // see INP_ISR()
 extern __xdata uint8_t USB_featureOut[FEATURE_REPORT_LEN];  // host -> device
 extern __xdata uint8_t USB_featureIn[FEATURE_REPORT_LEN];   // device -> host
 

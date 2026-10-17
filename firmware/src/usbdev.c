@@ -13,6 +13,8 @@
 
 uint8_t USB_personality;
 volatile __bit USB_featureNew;
+volatile __bit USB_updateGo;
+volatile uint8_t USB_stallTicks;
 __xdata uint8_t USB_featureOut[FEATURE_REPORT_LEN];
 __xdata uint8_t USB_featureIn[FEATURE_REPORT_LEN];
 
@@ -63,15 +65,17 @@ static uint8_t USB_getDescriptor(void) {
 
   switch(setupBuf->wValueH) {
     case USB_DESCR_TYP_DEVICE:
-      pDescr = USB_personality == USB_GAMEPAD ? DevDescrGamepad : DevDescrKeyboard;
+      pDescr = USB_personality == USB_UPDATE ? DevDescrUpdate
+             : USB_personality == USB_GAMEPAD ? DevDescrGamepad : DevDescrKeyboard;
       return USB_sendDescr(18);
     case USB_DESCR_TYP_CONFIG:
       if(USB_personality == USB_GAMEPAD) { pDescr = CfgDescrGamepad; return USB_sendDescr(GAMEPAD_CFG_LEN); }
+      if(USB_personality == USB_UPDATE)  { pDescr = CfgDescrUpdate;  return USB_sendDescr(UPDATE_CFG_LEN); }
       pDescr = CfgDescrKeyboard;
       return USB_sendDescr(KBD_CFG_LEN);
     case USB_DESCR_TYP_STRING:
       if(idx == MS_OS_STRING_INDEX) {
-        if(USB_personality != USB_GAMEPAD) return 0xFF;
+        if(USB_personality == USB_KEYBOARD) return 0xFF;
         pDescr = MsOsString;
         return USB_sendDescr(18);
       }
@@ -79,6 +83,7 @@ static uint8_t USB_getDescriptor(void) {
       pDescr = Strings[idx];
       return USB_sendDescr(pDescr[0]);
     case USB_DESCR_TYP_REPORT:
+      if(USB_personality == USB_UPDATE) return 0xFF;
       if(setupBuf->wIndexL == 0) { pDescr = Report0; return USB_sendDescr(Report0Len); }
       if(setupBuf->wIndexL == 1) { pDescr = Report1; return USB_sendDescr(Report1Len); }
       return 0xFF;
@@ -121,13 +126,22 @@ static uint8_t USB_classRequest(void) {
   }
 }
 
-// Vendor requests: only the Microsoft OS extended compatible ID (gamepad layout).
-// Everything else is stalled.
+// Vendor requests: the Microsoft OS descriptors (gamepad and update layouts) and the
+// update layout's go-ahead. Everything else is stalled.
 static uint8_t USB_vendorRequest(void) {
-  if(USB_personality == USB_GAMEPAD && SetupReq == MS_OS_VENDOR_CODE &&
-     (SetupType & 0x80) && setupBuf->wIndexL == 0x04 && setupBuf->wIndexH == 0) {
-    pDescr = MsCompatId;
-    return USB_sendDescr(sizeof(MsCompatId));
+  uint8_t upd = USB_personality == USB_UPDATE;
+  if(upd && SetupReq == UPDATE_GO_REQUEST && !(SetupType & 0x80)) {
+    USB_updateGo = 1;
+    return 0;
+  }
+  if(SetupReq != MS_OS_VENDOR_CODE || !(SetupType & 0x80) || USB_personality == USB_KEYBOARD) return 0xFF;
+  if(setupBuf->wIndexL == 0x04) {
+    pDescr = upd ? MsCompatIdUpdate : MsCompatId;
+    return USB_sendDescr(40);
+  }
+  if(setupBuf->wIndexL == 0x05) {
+    pDescr = MsNoProps;
+    return USB_sendDescr(sizeof(MsNoProps));
   }
   return 0xFF;
 }
@@ -214,6 +228,7 @@ static void USB_EP0_SETUP(void) {
   if(len == 0xFF) {
     SetupReq = 0xFF;
     UEP0_CTRL = bUEP_R_TOG | bUEP_T_TOG | UEP_R_RES_STALL | UEP_T_RES_STALL;
+    if(USB_personality == USB_UPDATE) USB_stallTicks = 20;   // see INP_ISR()
   }
   else {
     UEP0_T_LEN = len;
@@ -338,7 +353,8 @@ void USB_init(uint8_t personality) {
   UEP2_DMA = EP2_ADDR;
   UEP3_DMA = EP3_ADDR;
   UEP4_1_MOD = bUEP1_TX_EN;
-  UEP2_3_MOD = personality == USB_GAMEPAD ? bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN : bUEP3_TX_EN;
+  UEP2_3_MOD = personality == USB_GAMEPAD ? bUEP2_RX_EN | bUEP2_TX_EN | bUEP3_TX_EN
+             : personality == USB_UPDATE  ? bUEP2_RX_EN | bUEP2_TX_EN : bUEP3_TX_EN;
   USB_resetEndpoints();
 
   USB_INT_EN |= bUIE_SUSPEND | bUIE_TRANSFER | bUIE_BUS_RST;

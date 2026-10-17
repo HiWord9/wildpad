@@ -33,6 +33,8 @@
 #define USB_PRODUCT_ID      0x8890
 #define USB_BCD_KEYBOARD    0x0100
 #define USB_BCD_GAMEPAD     0x0101
+#define USB_BCD_UPDATE      0x0102
+#define UPDATE_GO_REQUEST   0x5B        // vendor OUT request: hand over to the ROM bootloader
 
 #define USB_MAX_POWER_mA    100
 #define MS_OS_VENDOR_CODE   0x5A        // bRequest for Microsoft OS feature descriptors

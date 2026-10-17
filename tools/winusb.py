@@ -102,9 +102,24 @@ def _device_path(instance, guid_text):
     return paths[0] if paths else None
 
 
+USB_DEVICE_GUID = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"   # every non-composite USB device
+
+
+class SETUP_PACKET(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("RequestType", ctypes.c_ubyte), ("Request", ctypes.c_ubyte),
+                ("Value", ctypes.c_ushort), ("Index", ctypes.c_ushort), ("Length", ctypes.c_ushort)]
+
+
+_wu.WinUsb_ControlTransfer.argtypes = [ctypes.c_void_p, SETUP_PACKET, ctypes.c_void_p, W.ULONG,
+                                       ctypes.POINTER(W.ULONG), ctypes.c_void_p]
+
+
 class WinUsbDevice:
-    def __init__(self, instance, timeout_ms=2000):
-        guid = interface_guid(instance)
+    def __init__(self, instance, timeout_ms=2000, guid=None):
+        """guid: the device interface to open; default: the one the WinUSB install
+        registered (USB_DEVICE_GUID works for single-interface devices)."""
+        guid = guid or interface_guid(instance)
         if guid is None:
             raise LookupError("no WinUSB driver")
         path = _device_path(instance, guid)
@@ -146,6 +161,13 @@ class WinUsbDevice:
         if not _wu.WinUsb_ReadPipe(self.h, self.ep_in, buf, size, ctypes.byref(done), None):
             raise OSError(f"USB read failed ({ctypes.get_last_error()})")
         return bytes(buf[:done.value])
+
+    def control_out(self, request, value=0, index=0):
+        """Vendor request to the device, no data."""
+        done = W.ULONG(0)
+        if not _wu.WinUsb_ControlTransfer(self.h, SETUP_PACKET(0x40, request, value, index, 0),
+                                          None, 0, ctypes.byref(done), None):
+            raise OSError(f"USB control request failed ({ctypes.get_last_error()})")
 
     def close(self):
         _wu.WinUsb_Free(self.h)

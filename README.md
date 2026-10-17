@@ -82,15 +82,11 @@ and Chrome, Edge or Opera. Download the latest release and unzip it.
 
 The stock firmware can't be backed up first: the CH552 bootloader has no read command.
 
-**Updates** need no screwdriver: press *Update firmware* on the setup page
-(*Settings → Firmware*), or run `flash.bat`. Both switch the running firmware into
-the bootloader by itself. If that ever fails, unplug the pad and plug it back in while
-holding **key 1**.
-
-On Windows the bootloader sometimes doesn't start on the first try (a bug in the
-CH552's built-in bootloader trips up Windows' driver). Both handle it by themselves:
-the flasher asks again within about four seconds; on the setup page just keep the
-browser's device list open, *USB Module* shows up again within about ten seconds.
+**Updates** need no screwdriver and no driver: press *Update firmware* on the setup
+page (*Settings → Firmware*), or run `flash.bat`. The pad switches to its update mode
+by itself; Windows sets it up without Zadig. If that ever fails, unplug the pad and
+plug it back in while holding **key 1** (that starts the chip's own bootloader, which
+needs the Zadig driver like the first flash).
 
 ### 2. Set up
 

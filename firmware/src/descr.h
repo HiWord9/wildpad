@@ -11,6 +11,11 @@
 //            IF2 XInput (FF/5D/01, EP2 IN + EP2 OUT). A Microsoft OS "XUSB10"
 //            compatible ID makes Windows load its built-in Xbox driver on that
 //            interface only, so keys and configuration keep working.
+//
+//  update    one vendor interface with bulk EP2 IN/OUT, like the CH552's ROM
+//            bootloader. Microsoft OS descriptors bind WinUSB to it without any
+//            driver install; once the flasher has opened it, the firmware hands the
+//            live connection to the ROM bootloader (see main.c, updateMode()).
 
 #pragma once
 #include <stdint.h>
@@ -26,11 +31,16 @@
 #define GAMEPAD_CFG_LEN     99
 #define CFG_HID0_OFFSET     18          // HID class descriptor of interface 0
 #define CFG_HID1_OFFSET     43          // HID class descriptor of interface 1
-#define STR_COUNT           5
+#define STR_COUNT           6           // index 5: serial number in the update layout
+#define UPDATE_CFG_LEN      32
 #define MS_OS_STRING_INDEX  0xEE
 
 extern __code uint8_t DevDescrKeyboard[18];
 extern __code uint8_t DevDescrGamepad[18];
+extern __code uint8_t DevDescrUpdate[18];
+extern __code uint8_t CfgDescrUpdate[UPDATE_CFG_LEN];
+extern __code uint8_t MsCompatIdUpdate[40];
+extern __code uint8_t MsNoProps[10];
 extern __code uint8_t CfgDescrKeyboard[KBD_CFG_LEN];
 extern __code uint8_t CfgDescrGamepad[GAMEPAD_CFG_LEN];
 extern __code uint8_t Report0[];

@@ -29,7 +29,7 @@
 
 #define BTN_BIT(i)      (1 << (i))
 #define KEEP_CLEAN_START  0x5A            // RESET_KEEP markers, see main()
-#define KEEP_BOOTLOADER   0xB0            // + 1: quick time-out, see startBootloader()
+#define KEEP_BOOTLOADER   0xB0            // + 1: the update layout
 #define NO_INPUT        0x0F
 #define BOOT_BUTTON     0                 // held at plug-in -> bootloader
 
@@ -44,13 +44,12 @@ static int16_t  pos;                      // knob position (clicks)
 static int16_t  center;                   // knob position treated as axis zero
 static int16_t  knobSeen;                 // knob position already turned into steps
 static int16_t  rel;                      // pos - center, limited to the axis range
-static __xdata uint8_t fakeBtn;           // buttons held by CMD_INJECT
-static __xdata int16_t fakePos;           // knob clicks added by CMD_INJECT
 static __bit    hasPad;                   // gamepad interface present
 static __bit    ledOn = 1;                // lights toggled on
 static __bit    rebootPending;
 static __bit    bootPending;
-static __bit    bootQuick;
+static __xdata uint8_t bootMode;          // CMD_BOOTLOADER offset
+static __bit    updating;                 // started in the update layout
 static __bit    brightDirty;              // brightness changed from the pad itself
 static __xdata uint16_t brightTime;
 static __xdata uint16_t profTime;                 // when the profile last changed (LED flash)
@@ -62,6 +61,7 @@ static __xdata action_t baseAct;          // scratch copy of a profile action
 static __xdata int16_t axisValue;                // cached gamepad axis value for rel
 static __xdata int16_t lastRel = 0x7FFF;         // rel the cached axis value was computed for
 static __xdata uint8_t lastRange;                // clicks from center to full lock
+static __xdata uint8_t axisLevel;                // |rel| scaled to 0..255
 
 static void applySettings(void) {
   INP_setInvert(CFG_FLAGS & FLAG_INVERT);
@@ -339,6 +339,19 @@ static void LED_flashAll(void) {
   for(i = 0; i < nLeds; i++) ledV[i] = 255;
 }
 
+// a * b with the CPU's 8x8 multiply (C would call a 16-bit library one)
+static uint16_t mulu8(uint8_t a, uint8_t b) __naked {
+  a; b;
+  __asm
+    mov  a, dpl
+    mov  b, _mulu8_PARM_2
+    mul  ab
+    mov  dpl, a
+    mov  dph, b
+    ret
+  __endasm;
+}
+
 // (a * b + 255) >> 8 with the CPU's 8x8 multiply (C would call a 16-bit library one)
 static uint8_t mul8(uint8_t a, uint8_t b) __naked {
   a; b;
@@ -373,10 +386,10 @@ static void LED_task(void) {
 
   if((uint16_t)(now - ledTime) < LED_TICK_MS) return;
   ledTime = now;
-  ledPhase += (uint16_t)cfg[S_LED_SPEED] * 48;
+  ledPhase += mulu8(cfg[S_LED_SPEED], 48);
   lvl = ledPhase >> 8;                                         // 0..255..0 triangle
   tri = (lvl & 0x80) ? ~(lvl << 1) : (lvl << 1);
-  hueAcc += (uint16_t)cfg[S_LED_SPEED] * 40;
+  hueAcc += mulu8(cfg[S_LED_SPEED], 40);
   if(hueAcc >= 49152u) hueAcc -= 49152u;           // 192 << 8
 
   p = PROFILE(prof);
@@ -385,7 +398,7 @@ static void LED_task(void) {
   else if(!ledOn) effect = LED_OFF;
   else if(effect == LED_STEERING) {
     if(axisMode() && nLeds >= 3)                               // outer LEDs grow with the axis
-      side = (uint16_t)(rel < 0 ? -rel : rel) * 255 / (lastRange ? lastRange : 1);
+      side = axisLevel;
     else effect = LED_SOLID;
   }
 
@@ -563,7 +576,7 @@ static void RUN_task(void) {
     if(runPos < runEnd) {                                      // next sequence step
       b = cfg[runPos];
       if((b & STEP_OP) == STEP_WAIT) {
-        runWait = (uint16_t)(b & ~STEP_OP) * 20;
+        runWait = mulu8(b & ~STEP_OP, 20);
         runTime = now;
         runPhase = 3;
         runPos++;
@@ -598,7 +611,7 @@ static void RUN_task(void) {
       runAction(a, entry >> 4, 0);
     }
     else {                                                     // idle
-      if(turnHeld && (uint16_t)(now - turnTime) >= (uint16_t)(cfg[S_TURN_HOLD] ? cfg[S_TURN_HOLD] : 8) * 100)
+      if(turnHeld && (uint16_t)(now - turnTime) >= mulu8(cfg[S_TURN_HOLD] ? cfg[S_TURN_HOLD] : 8, 100))
         releaseTurns();                                        // the knob has stopped
       return;
     }
@@ -703,7 +716,7 @@ static void BTN_task(void) {
           handled &= ~bit;
           tapAction(i, baseAction(i));
         }
-        else if((uint16_t)(now - btime[i]) >= (uint16_t)cfg[S_HOLD_10MS] * 10) {
+        else if((uint16_t)(now - btime[i]) >= mulu8(cfg[S_HOLD_10MS], 10)) {
           a = findCombo(i, i);                                 // long press
           if(a) startAction(i, a);
         }
@@ -805,9 +818,10 @@ static void PAD_task(void) {
       axisValue = rel * (int16_t)(32767u / range);             // 16-bit math, full lock exact
       if(rel == range) axisValue = 32767;
       else if(rel == -range) axisValue = -32767;
+      axisLevel = (uint16_t)(rel < 0 ? -rel : rel) * 255 / range;
     }
     if(axis == AXIS_TRIGGERS) {
-      t = (uint16_t)(rel < 0 ? -rel : rel) * 255 / range;
+      t = axisLevel;
       if(rel < 0 && t > padNew[4]) padNew[4] = t;
       if(rel > 0 && t > padNew[5]) padNew[5] = t;
     }
@@ -970,17 +984,13 @@ static void CFG_task(void) {
     case CMD_REBOOT:
       rebootPending = 1;
       break;
-    case CMD_BOOTLOADER:                                    // offset 1: quick time-out
+    case CMD_BOOTLOADER:                                    // offset: see KEEP_BOOTLOADER
       bootPending = 1;
-      bootQuick = off & 1;
+      bootMode = off & 1;
       break;
     case CMD_PROFILE:
       if(off >= nProf) { status = ST_BAD_RANGE; break; }
       setProfile(off);
-      break;
-    case CMD_INJECT:                                        // as if pressed / turned by hand
-      fakeBtn = off;
-      fakePos += (int8_t)len;
       break;
     default:
       status = ST_BAD_CMD;
@@ -1011,16 +1021,87 @@ static void reboot(void) {
   while(1);
 }
 
-// Start the ROM bootloader. It gives up after about 10 s without a command, timed by
-// timer 0 at Fsys/12, and doesn't set that clock itself; with quick set it runs at
-// Fsys/4, so it gives up after ~3.3 s (each command still leaves ~20 s). That helps
-// the flasher on Windows: when WinUSB starts, it asks GET_STATUS, which the bootloader
+// Start the ROM bootloader; it gives up after ~10 s without a command. On Windows
+// that often fails: when WinUSB starts, it asks GET_STATUS, which the bootloader
 // stalls, and a bug in the ROM then often stalls the next request too
-// (SET_CONFIGURATION), so Windows doesn't start the driver (code 10). The flasher
-// asks again, and a failed try costs 3 s instead of 10.
-static void startBootloader(uint8_t quick) {
-  if(quick) T2MOD = bT0_CLK;
+// (SET_CONFIGURATION), so Windows doesn't start the driver (code 10). The update
+// layout below avoids that; this way stays for key 1 at plug-in and other ROMs.
+static void startBootloader(void) {
   BOOT_now();
+}
+
+// -----------------------------------------------------------------------------------
+// Update layout: the firmware shows up as a bulk device like the ROM bootloader, with
+// Microsoft OS descriptors that bind WinUSB by itself. Windows' driver start works
+// (the firmware answers GET_STATUS, the ROM bootloader stalls it, see above), and no
+// driver has to be installed. When the flasher says go, the live connection is handed
+// to the ROM bootloader's main loop, past its own USB start; it then takes the usual
+// flashing commands on EP2. Only for the v2.50 ROM this was checked against.
+#define ROM_LOOP_AT  0x3C90                                  // v2.50: its main loop, which
+static __code uint8_t ROM_LOOP[] = {                        // starts with
+  0x30, 0x02, 0x0B,                                         // jnb bSoftReset, +11
+  0x75, 0xA1, 0x55, 0x75, 0xA1, 0xAA, 0x75, 0xB1, 0x10,     // safe mode, GLOBAL_CFG = reset
+  0x80, 0xFE                                                // sjmp $
+};
+#define ROM_ID_AT    0x3E98                                 // and its device descriptor:
+static __code uint8_t ROM_ID[] = { 0x48, 0x43, 0xE0, 0x55, 0x50, 0x02 };   // 4348:55E0 v2.50
+
+static __bit romHas(__code uint8_t* at, __code uint8_t* pat, uint8_t n) {
+  while(n--) if(*at++ != *pat++) return 0;
+  return 1;
+}
+
+static void updateMode(void) {
+  uint8_t i;
+  if(!romHas((__code uint8_t*)ROM_LOOP_AT, ROM_LOOP, sizeof(ROM_LOOP)) ||
+     !romHas((__code uint8_t*)ROM_ID_AT, ROM_ID, sizeof(ROM_ID))) startBootloader();   // the usual way
+  EA = 0;
+  for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
+  INP_init();
+  USB_init(USB_UPDATE);
+  WDT_start();
+  now = INP_millis();
+  while(!USB_updateGo) {
+    WDT_reset();
+    if((uint16_t)(INP_millis() - now) > 15000) reboot();   // no flasher came
+  }
+  DLY_ms(5);                                                // the request's status stage
+  EA = 0;
+  WDT_stop();
+  SAFE_MOD = 0x55;                                          // the ROM's clock: 12 MHz
+  SAFE_MOD = 0xAA;
+  CLOCK_CFG = CLOCK_CFG & ~MASK_SYS_CK_SEL | 0x04;
+  SAFE_MOD = 0x00;
+  T2CON = 0; T2MOD = 0;                                     // timer 0 for its time-out
+  TMOD = 0x01; TL0 = 0xC0; TH0 = 0x64; TF0 = 0; TR0 = 1;
+  IE_USB = 0;                                               // its USB setup, polled
+  USB_INT_EN = bUIE_SUSPEND | bUIE_TRANSFER | bUIE_BUS_RST;
+  UEP4_1_MOD = 0;
+  UEP2_3_MOD = bUEP2_RX_EN | bUEP2_TX_EN;
+  UEP0_DMA = 0x0000;
+  UEP2_DMA = 0x000C;
+  UEP0_CTRL = UEP_T_RES_NAK;
+  UEP1_CTRL = UEP_T_RES_NAK;
+  UEP3_CTRL = UEP_T_RES_NAK;
+  UEP2_CTRL = bUEP_AUTO_TOG | UEP_T_RES_NAK;
+  UEP2_T_LEN = 0;
+  USB_INT_FG = 0xFF;
+  __asm
+    mov  dptr, #ROM_LOOP_AT
+    mov  r0, #127                 ; its RAM as after its start-up: all zero ...
+    clr  a
+  00001$:
+    mov  @r0, a
+    djnz r0, 00001$
+    mov  0x20, #0x01              ; ... but write protect on (bit 0)
+    mov  0x21, #0x01              ; configuration 1
+    mov  0x22, #0x04              ; time-out counter 1250: ~10 s without a command
+    mov  0x23, #0xE2
+    mov  0x71, #0xFF              ; no control request going on
+    mov  sp, #0x77                ; its stack
+    clr  a
+    jmp  @a+dptr
+  __endasm;
 }
 
 // Enter the USB bootloader through a chip reset: main() starts it straight from the
@@ -1028,7 +1109,7 @@ static void startBootloader(uint8_t quick) {
 // plug-in.
 static void enterBootloader(void) {
   uint8_t i;
-  RST_keep(KEEP_BOOTLOADER + bootQuick);                    // even a watchdog reset gets there
+  RST_keep(KEEP_BOOTLOADER + bootMode);                     // even a watchdog reset gets there
   EA = 0;
   for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
   EA = 1;
@@ -1059,8 +1140,9 @@ void main(void) {
 #ifndef TEST_HARNESS
   i = RST_getKeep();
   if((i & 0xFE) == KEEP_BOOTLOADER) {                       // asked for the bootloader
-    RST_keep(0);
-    startBootloader(i & 1);
+    RST_keep(KEEP_CLEAN_START);                             // fresh from a reset already
+    if(!(i & 1)) startBootloader();
+    updating = 1;                                           // the update layout
   }
   // Start every boot from a clean chip. After its time-out the ROM bootloader hands
   // over without a reset, leaving its USB and interrupt setup behind; the pad then
@@ -1086,8 +1168,9 @@ void main(void) {
   if(btn & BTN_BIT(BOOT_BUTTON)) {                          // key 1 held at plug-in: bootloader
     NEO_latch();
     for(i = nLeds * 3; i; i--) NEO_sendByte(127);
-    startBootloader(0);                                     // time for Zadig and choosers
+    startBootloader();
   }
+  if(updating) updateMode();
 
   persona = wantedPersona();
   hasPad = persona != USB_KEYBOARD;
@@ -1102,8 +1185,8 @@ void main(void) {
   while(1) {
     WDT_reset();
     now = INP_millis();
-    btn = INP_buttons() | fakeBtn;
-    pos = INP_position() + fakePos;
+    btn = INP_buttons();
+    pos = INP_position();
 
     BTN_task();
     KNOB_collect();

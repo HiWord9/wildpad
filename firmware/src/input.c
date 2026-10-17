@@ -6,6 +6,7 @@
 #include "input.h"
 #include "config.h"
 #include "settings.h"
+#include "usbdev.h"
 
 // Timer2 in 16-bit auto-reload mode, clocked at Fsys/12
 #define TICK_HZ       4000
@@ -86,6 +87,16 @@ uint8_t INP_readRaw(void) {
 void INP_ISR(void) __interrupt(INT_NO_TMR2) {
   uint8_t s, i, raw, bit;
   TF2 = 0;
+
+  // Update layout: a stalled control request leaves endpoint 0 stalled until the next
+  // SETUP has been handled, but the CH552 answers that request's next stage before;
+  // when it comes quickly it is stalled too, and Windows gives up on the device (code
+  // 10). The only stalled request there is the device qualifier, and the next one
+  // follows ~9 ms later, so the stall goes after 5 ms. (Not in the other layouts:
+  // their drivers may read a stalled request's data stage later than that, and an
+  // endpoint that NAKs it then would hang the control pipe.)
+  if(USB_stallTicks && !--USB_stallTicks && (UEP0_CTRL & MASK_UEP_T_RES) == UEP_T_RES_STALL)
+    UEP0_CTRL = UEP_R_RES_ACK | UEP_T_RES_NAK;
 
   // --- quadrature decoder ---
   s = ENC_PORT_STATE();

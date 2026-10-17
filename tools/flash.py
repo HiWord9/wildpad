@@ -99,9 +99,9 @@ def _software_bootloader():
             if len(r) >= 4 and r[0] == 1 and r[1] == 77:
                 proto = r[3]
                 break
-        # offset 1: quick bootloader time-out, so a try Windows botches costs ~3 s
+        # offset 1: update layout (older Wildpad firmware: bootloader, quick time-out)
         dev.send_feature_report(b"\x00" + bytes([8 if proto == 1 else 10, 78, 1]) + bytes(37))
-        print("Asked the running firmware to start the USB bootloader.")
+        print("Asked the running firmware to switch to update mode.")
         return True
     except Exception:
         return False
@@ -236,6 +236,55 @@ def wait_for_bootloader(seconds, retrying=True):
     return wait_windows(seconds, retrying) if WINDOWS else wait_pyusb(seconds)
 
 
+# Wildpad firmware's update layout: the pad shows up as a bulk device (serial WILDPADU)
+# that Windows binds WinUSB to by itself, and hands its live USB connection to the ROM
+# bootloader when asked. That skips the bootloader's own USB start, where Windows'
+# driver often fails (code 10), and needs no Zadig.
+UPDATE_SERIAL, UPDATE_GO = "WILDPADU", 0x5B
+
+
+def _usb_serial(dev):
+    import usb.util
+    try:
+        return usb.util.get_string(dev, dev.iSerialNumber)
+    except Exception:
+        return None
+
+
+def _open_update():
+    if WINDOWS:
+        import winusb
+        inst = [i for i in winusb.present_instances(0x1189, 0x8890) if i.upper().endswith("\\" + UPDATE_SERIAL)]
+        if not inst:
+            return None
+        t = winusb.WinUsbDevice(inst[0], guid=winusb.USB_DEVICE_GUID)
+        t.control_out(UPDATE_GO)
+    else:
+        need("usb", "pyusb")
+        import usb.core
+        dev = next((d for d in usb.core.find(find_all=True, idVendor=0x1189, idProduct=0x8890)
+                    if _usb_serial(d) == UPDATE_SERIAL), None)
+        if dev is None:
+            return None
+        t = PyUsbTransport(dev)
+        dev.ctrl_transfer(0x40, UPDATE_GO, 0, 0, None)
+    time.sleep(0.05)                                # the firmware hands over 5 ms later
+    return t
+
+
+def wait_update(seconds):
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            t = _open_update()
+        except Exception:
+            t = None                                # driver still binding, try again
+        if t is not None:
+            return t
+        time.sleep(0.1)
+    return None
+
+
 # ===================================================================================
 # CH55x bootloader protocol (v2.x)
 # ===================================================================================
@@ -303,12 +352,8 @@ def main():
         sys.exit("firmware too large")
     print(f"Firmware: {path} ({len(data)} bytes)")
 
-    if WINDOWS and not winusb_installed():
-        driver_missing()
-        input("Press Enter here when Zadig says the driver was installed ...")
-
     t = None
-    attempts = 25                   # a failed try costs ~4 s (quick bootloader time-out)
+    attempts = 8
     for attempt in range(1, 0 if wait_only else attempts + 1):
         jumped = try_software_bootloader()
         for _ in range(5 if attempt > 1 else 0):    # firmware may still be starting up
@@ -318,16 +363,24 @@ def main():
             jumped = try_software_bootloader()
         if not jumped:
             break
+        t = wait_update(6)
+        if t is not None:
+            print("  update mode: the pad handed over to its bootloader")
+            break
+        # Older Wildpad firmware starts the ROM bootloader itself. On Windows its driver
+        # fails to start about every third time (code 10): WinUSB asks GET_STATUS, the
+        # bootloader stalls it, and the CH552 then stalls SET_CONFIGURATION too.
+        # Restarting the device needs admin rights, so let it give up and ask again.
+        if WINDOWS and not winusb_installed():
+            break
         t = wait_for_bootloader(10)
         if t is not None or attempt == attempts:
             break
-        # Windows fails to start the bootloader's WinUSB driver about every third time
-        # (problem code 10): WinUSB asks GET_STATUS, the bootloader stalls it, and a
-        # bug in the CH552's ROM then stalls SET_CONFIGURATION too. Restarting the
-        # device needs admin rights, so let the bootloader give up (~3 s with Wildpad
-        # firmware) and ask again.
         print(f"  trying again ({attempt + 1} of {attempts}) ...")
         wait_for_firmware(15)
+    if t is None and WINDOWS and not winusb_installed():
+        driver_missing()
+        input("Press Enter here when Zadig says the driver was installed ...")
     if t is None:
         print(f"\nWaiting for the bootloader ({180 if wait_only else 60} s) ...")
         print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")

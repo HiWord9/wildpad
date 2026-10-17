@@ -5,6 +5,8 @@
 #include "ch554.h"
 #include "input.h"
 
+volatile uint8_t USB_stallTicks;                  // read by the timer interrupt
+
 #define N_RESULTS 16
 __xdata __at (0x0200) volatile int16_t results[N_RESULTS];
 __xdata __at (0x0240) volatile uint8_t done_flag;

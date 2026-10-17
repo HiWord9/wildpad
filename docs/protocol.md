@@ -38,9 +38,8 @@ matching `cmd` and `seq` (poll every few milliseconds; `seq` should cycle throug
 | 7 | STATUS | – | bytes 0–4 like the live input report; bytes 5, 6 the raw P1 and P3 port pins (to find a board's keys); bytes 8–16 the keyboard report being sent (report id, modifiers, reserved, 6 keys) |
 | 8 | RECENTER | – | – (knob axis center = current position) |
 | 9 | REBOOT | – | – (device reconnects) |
-| 10 | BOOTLOADER | offset 1: quick time-out | – (device reappears as the CH552 bootloader `4348:55E0`; it leaves again after ~10 s without a command, ~3 s with the quick time-out, ~20 s after each command) |
+| 10 | BOOTLOADER | offset 1: update layout | – (offset 0: device reappears as the CH552 bootloader `4348:55E0`, which leaves again after ~10 s without a command. Offset 1: it reappears as a bulk device with serial `WILDPADU`, see below) |
 | 11 | PROFILE | offset = profile (0-based) | – (switch the active profile) |
-| 12 | INJECT | offset = buttons held (bit *i* = button *i*), length = knob clicks (int8) | – (acts as if the buttons were held and the knob turned; for automated tests) |
 | 13 | BOARD | offset = board (1 … 3), or 0 with the 10-byte pin map as data | byte 0: as COMMIT (live settings = factory settings for that board, not saved; status 2 if the map is invalid) |
 
 To change settings: READ everything, modify, WRITE all chunks, COMMIT, then SAVE. If
@@ -70,6 +69,24 @@ INFO payload:
 Older firmware: protocol 2 (early previews) had a fixed 104-byte layout with
 keyboard and wheel modes; protocol 1 used `READ = 1` and `BOOTLOADER = 8`. The flasher
 recognises both by the protocol byte of the cmd 1 response.
+
+## Update layout
+
+After BOOTLOADER with offset 1 the pad reconnects as `1189:8890`, serial `WILDPADU`,
+one vendor interface with bulk endpoints `0x82` / `0x02` (64 bytes), like the CH552's
+ROM bootloader. Microsoft OS 1.0 descriptors (compatible ID `WINUSB`) make Windows bind
+WinUSB to it without any driver install. The host opens it and sends the vendor
+request `bmRequestType 0x40, bRequest 0x5B` (no data); 5 ms later the firmware hands
+the live USB connection to the ROM bootloader's main loop, which then takes the usual
+CH55x flashing commands on endpoint 2 (as `tools/flash.py` sends them). Without that
+request the firmware restarts normally after 15 s. Only the v2.50 ROM is handed over
+to; on other ROMs the pad starts its bootloader the usual way.
+
+Why: when the ROM bootloader connects by itself, Windows' WinUSB driver asks it
+GET_STATUS, which it stalls, and the CH552 then often stalls the next request too, so
+Windows fails to start the driver (Device Manager: code 10). In the update layout
+the firmware answers every request Windows sends; the one stall (device qualifier,
+which a full-speed device must stall) is cleared after 5 ms, before the next request.
 
 ## Settings (128 bytes)
 
