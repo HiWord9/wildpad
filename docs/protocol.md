@@ -107,7 +107,7 @@ the live settings. Sizes below are for the 3-key board (6 inputs, profiles of 22
 | 7 | 1 | knob clicks per turn (only for drawing) |
 | 8 | 1 | profile after power-up (0-based) |
 | 9 | 1 | light animation speed (1–10) |
-| 10 | 1 | switcher hold after turning: what a knob turn holds (type 11 modifiers, *hold* steps) is let go this long after the last click, 100 ms units (2–30; 0 = 8) |
+| 10 | 1 | switcher hold after turning: what a knob turn holds (*hold* steps) is let go this long after the last click, 100 ms units (2–30; 0 = 8) |
 | 11 | 1 | profiles in use, 1 … max (0 = all) |
 | 12 | 1 | board: 1 … 3 known board, 0 own pin map (see Boards) |
 | 13 | 10 | pin map, only when byte 12 is 0 |
@@ -187,8 +187,7 @@ key is held, and tap X when it is let go":
 | 8 | center the axis | |
 | 9 | profile | p1 profile (0-based), 0xF0 next, 0xF1 previous; p2 0 switch, 1 only while held |
 | 10 | lights | p1 0 on/off, 1 brighter, 2 dimmer (brightness changes are stored after 3 s) |
-| 11 | key, modifiers held | like type 1, but Ctrl / Alt / Win (not Shift) stay held: on a button while it is held (the key and Shift are tapped once), on a knob turn until the knob has stopped (the key and Shift are tapped on every click). For Alt+Tab-style switchers. |
-| 12 | sequence | p1 sequence id |
+| 11 | sequence | p1 sequence id (an app switcher like Alt+Tab is the sequence *hold Alt, tap Tab*: on a knob turn Alt stays held until the knob has stopped) |
 
 Keys, media keys, mouse buttons and gamepad buttons stay pressed while their input is
 held; knob clicks press and release them once per click. The gamepad interface is
@@ -214,8 +213,8 @@ present whenever any action, combo or step uses type 6 or 7.
 }
 ```
 
-Action texts are listed by `wildpad.py actions`; `key:alt+tab:hold` is type 11 and
-`seq:…` a sequence (steps `tap ACTION`, `hold ACTION`, `wait MS`, `on release`,
-separated by `;`). `rightAway` lists the buttons whose own action is sent right away;
-when it is missing, modifier-only keys, gamepad buttons and type 11 are sent right
-away and everything else on release.
+Action texts are listed by `wildpad.py actions`; `seq:…` is a sequence (steps
+`tap ACTION`, `hold ACTION`, `wait MS`, `on release`, separated by `;`). The older
+`key:alt+tab:hold` is read as `seq:hold key:alt; tap key:tab`. `rightAway` lists the
+buttons whose own action is sent right away; when it is missing, modifier-only keys
+and gamepad buttons are sent right away and everything else on release.

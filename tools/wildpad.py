@@ -67,7 +67,8 @@ ST_TAP, ST_HOLD, ST_WAIT, ST_REL = 0x00, 0x20, 0x40, 0x60
 EFFECTS = ["off", "solid", "breathe", "rainbow", "press", "steering"]
 
 (ACT_NONE, ACT_KEY, ACT_MEDIA, ACT_MOUSE_BTN, ACT_SCROLL, ACT_MOUSE_MOVE, ACT_PAD_BTN,
- ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT, ACT_KEY_HOLD, ACT_SEQ) = range(13)
+ ACT_AXIS, ACT_CENTER, ACT_PROFILE, ACT_LIGHT, ACT_SEQ) = range(12)
+HOLD_MODS = 0xDD                     # what an app switcher keeps held: all modifiers but Shift
 ACT_TYPE_MASK, ACT_NOW = 0x1F, 0x80
 PROF_NEXT, PROF_PREV = 0xF0, 0xF1
 AXES = ["lx", "ly", "rx", "ry", "triggers"]
@@ -115,7 +116,7 @@ class ActionError(ValueError):
 
 def default_now(a):
     """Modifier-only keys and gamepad buttons are held right away by default."""
-    return (a[0] == ACT_KEY and a[1] and not a[2]) or a[0] in (ACT_PAD_BTN, ACT_KEY_HOLD)
+    return (a[0] == ACT_KEY and a[1] and not a[2]) or a[0] == ACT_PAD_BTN
 
 
 def _int8(v):
@@ -148,9 +149,9 @@ def parse_action(text):
                     code = int(part, 16)
                 else:
                     raise ActionError(f"unknown key '{part}'")
-            if flag not in ("", "hold"):
-                raise ActionError(f"unknown key option '{flag}' (only :hold)")
-            return (ACT_KEY_HOLD if flag else ACT_KEY, mods, code)
+            if flag:
+                raise ActionError(f"unknown key option '{flag}'")
+            return (ACT_KEY, mods, code)
         if kind == "media":
             u = MEDIA[arg] if arg in MEDIA else int(arg, 0)
             return (ACT_MEDIA, u & 0xFF, u >> 8)
@@ -192,11 +193,11 @@ def format_action(a):
     t, p1, p2 = a
     if t == ACT_NONE:
         return "none"
-    if t in (ACT_KEY, ACT_KEY_HOLD):
+    if t == ACT_KEY:
         parts = [n for n, b in MODIFIERS.items() if p1 & b]
         if p2:
             parts.append(KEYNAMES.get(p2, f"0x{p2:02x}"))
-        return "key:" + "+".join(parts) + (":hold" if t == ACT_KEY_HOLD else "")
+        return "key:" + "+".join(parts)
     if t == ACT_MEDIA:
         u = p1 | p2 << 8
         name = next((n for n, v in MEDIA.items() if v == u), None)
@@ -414,6 +415,13 @@ class Settings:
 
     def parse(self, text):
         t = text.strip()
+        m = re.fullmatch(r"(key:[^:]+):hold", t.lower())
+        if m:                        # older files: "keep Alt held, tap Tab" is two steps now
+            _, mods, code = parse_action(m[1])
+            sid = max(self.seqs, default=-1) + 1
+            self.seqs[sid] = ([("hold", (ACT_KEY, mods & HOLD_MODS, 0)),
+                               ("tap", (ACT_KEY, mods & ~HOLD_MODS & 0xFF, code))], [])
+            return (ACT_SEQ, sid, 0)
         if not t.lower().startswith("seq:"):
             return parse_action(t)
         press, release = [], []
@@ -705,9 +713,6 @@ def cmd_actions():
     print("""Actions
   none
   key:ctrl+shift+a      keyboard key with modifiers (ctrl shift alt win, rctrl ...)
-  key:alt+tab:hold      Ctrl / Alt / Win stay held, the key (and Shift) is tapped: on a
-                        button while it is held, on a knob turn until the knob stops
-                        (turn-hold-ms). For Alt+Tab-style switchers.
   media:volume-up       media key
   mouse:left            mouse button: left right middle back forward
   scroll:-1             scroll down one notch (scroll:0,1 = one notch right)
@@ -722,8 +727,9 @@ def cmd_actions():
   seq:STEP; STEP; ...   several steps in order. Steps: tap ACTION, hold ACTION (pressed
                         until the control is let go; on a knob turn until it stops),
                         wait MS, and 'on release' - the steps after it run when the
-                        control is let go. Example:
+                        control is let go. Examples:
                         seq:tap pad:a; wait 60; tap pad:a; hold pad:rt; on release; tap key:x
+                        seq:hold key:alt; tap key:tab   (app switcher, e.g. on a knob turn)
 Light effects: """ + " ".join(EFFECTS) + """
 Gamepad buttons: """ + " ".join(PAD_NAMES[1:]) + """
 Media keys: """ + " ".join(MEDIA) + """

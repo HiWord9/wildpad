@@ -1,10 +1,11 @@
 // Simulator test for window switching with the knob, both ways:
-//  A) knob press = Alt+Tab keeping Alt held (ACT_KEY_HOLD, sent right away with
-//     ACT_NOW); hold knob + turn right = Tab, + turn left = Shift+Tab. These profile
+//  A) knob press = Alt+Tab keeping Alt held (sequence "hold Alt; tap Tab", sent right
+//     away with ACT_NOW); hold knob + turn right = Tab, + turn left = Shift+Tab. These profile
 //     combos must win over the factory all-profiles brightness combos.
 //     Script: hold the knob, 2 clicks right, 1 left, release.
-//  B) turn right = Alt+Tab, turn left = Alt+Shift+Tab, both ACT_KEY_HOLD: Alt stays
-//     held between clicks and is let go once the knob stops (0.8 s).
+//  B) turn right = Alt+Tab, turn left = Alt+Shift+Tab, both sequences ("hold Alt; tap
+//     (Shift+)Tab", the factory ones): Alt stays held between clicks and is let go once
+//     the knob stops (0.8 s).
 //     Script: 2 clicks right, 1 left, wait.
 
 #pragma nooverlay
@@ -22,16 +23,16 @@ void SET_load(void) {
   cfg[S_BOARD] = DEFAULT_BOARD; SET_layout(cfg);
   SET_defaults(cfg);
   a = ACTION(0, knobBtn);
-  a->type = ACT_KEY_HOLD | ACT_NOW;
-  a->p1 = 0x04;                                // Alt+Tab, Alt held
-  a->p2 = 0x2B;
+  a->type = ACT_SEQ | ACT_NOW;                 // factory sequence 0: Alt held, Tab tapped
+  a->p1 = 0;
   a = ACTION(0, IN_RIGHT);
-  a->type = ACT_KEY_HOLD; a->p1 = 0x04; a->p2 = 0x2B;           // Alt+Tab
+  a->type = ACT_SEQ; a->p1 = 0;                 // Alt+Tab
   a = ACTION(0, IN_LEFT);
-  a->type = ACT_KEY_HOLD; a->p1 = 0x06; a->p2 = 0x2B;           // Alt+Shift+Tab
+  a->type = ACT_SEQ; a->p1 = 1;                 // Alt+Shift+Tab
   // the factory combos stay: hold knob + turn = brightness in all profiles; these
   // profile-1 combos with the same controls come later in the list and must win
-  c = cfg + RECORDS_AT(maxProf) + 5 * 4;            // after the 5 all-profiles combos
+  c = cfg + RECORDS_AT(maxProf);                // after the factory records
+  while(*c != REC_END) c += *c < REC_SEQ ? 4 : 2 + c[1];
   c[0] = (knobBtn << 4) | IN_RIGHT; c[1] = ACT_KEY; c[2] = 0;    c[3] = 0x2B;   // Tab
   c += 4;
   c[0] = (knobBtn << 4) | IN_LEFT;  c[1] = ACT_KEY; c[2] = 0x02; c[3] = 0x2B;   // Shift+Tab

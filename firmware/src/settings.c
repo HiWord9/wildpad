@@ -100,8 +100,8 @@ static __code uint8_t DEF_ACTIONS[][5] = {
   {2, 1,     ACT_KEY, WIN, 0x08},       // Win+E: file explorer
   {2, 2,     ACT_KEY, WIN | SHIFT, 0x16},    // Win+Shift+S: screenshot
   {2, KNOB,  ACT_KEY, WIN, 0x2B},       // Win+Tab: task view
-  {2, RIGHT, ACT_KEY_HOLD, ALT, 0x2B},  // Alt+Tab, Alt held while turning
-  {2, LEFT,  ACT_KEY_HOLD, ALT | SHIFT, 0x2B},   // Alt+Shift+Tab
+  {2, RIGHT, ACT_SEQ, 0, 0},            // Alt+Tab, Alt held while turning
+  {2, LEFT,  ACT_SEQ, 1, 0},            // Alt+Shift+Tab
 };
 
 // {held, trigger, profile, type, p1, p2}
@@ -111,6 +111,12 @@ static __code uint8_t DEF_COMBOS[][6] = {
   {KNOB, 2,     ALL, ACT_PROFILE, 2, PROF_SWITCH},
   {KNOB, RIGHT, ALL, ACT_LIGHT, LIGHT_BRIGHTER, 0},
   {KNOB, LEFT,  ALL, ACT_LIGHT, LIGHT_DIMMER, 0},
+};
+
+// Sequences for profile 3, after the combos: hold Alt (until the knob stops), tap Tab
+static __code uint8_t DEF_SEQS[] = {
+  REC_SEQ | 0, 6, STEP_HOLD | ACT_KEY, ALT, 0, STEP_TAP | ACT_KEY, 0, 0x2B,
+  REC_SEQ | 1, 6, STEP_HOLD | ACT_KEY, ALT, 0, STEP_TAP | ACT_KEY, SHIFT, 0x2B,
 };
 
 // Placeholder or key number -> input of this board, 0xFF if it has none
@@ -154,6 +160,8 @@ void SET_defaults(__xdata uint8_t* dst) {
     q[3] = d[5];
     q += 4;
   }
+  if(maxProf > 2 && q + sizeof(DEF_SEQS) <= dst + RECORDS_END)
+    for(i = 0; i < sizeof(DEF_SEQS); i++) *q++ = DEF_SEQS[i];
   dst[S_CHECKSUM] = SET_checksum(dst);
   SET_valid(dst);                                   // notes SET_padUsed
 }
@@ -171,25 +179,34 @@ static uint8_t isPadType(uint8_t t) {
 }
 
 // Check settings p; on success also note whether any action needs the gamepad
+// Allowed range of header bytes S_HOLD_10MS .. S_TURN_HOLD
+static __code uint8_t HEADER_LIMITS[] = {
+  10, 100,                              // S_HOLD_10MS
+  1, 30,                                // S_DEBOUNCE_MS
+  1, 50,                                // S_TAP_MS
+  0, 255,                               // S_DETENTS
+  0, 255,                               // S_START_PROFILE (checked against the profiles)
+  1, 10,                                // S_LED_SPEED
+  0, 30,                                // S_TURN_HOLD
+};
+
 uint8_t SET_valid(__xdata uint8_t* p) {
   uint8_t i, j, end, pad = 0, n;
   __xdata uint8_t* q;
+  __code uint8_t* l;
   if(p[S_MAGIC] != SETTINGS_MAGIC || p[S_VERSION] != SETTINGS_VERSION) return 0;
   if(!SET_layout(p)) return 0;
   n = p[S_PROFILES] ? p[S_PROFILES] : maxProf;
   if(n > maxProf) return 0;
   if(p[S_CHECKSUM] != SET_checksum(p)) return 0;
-  if(p[S_HOLD_10MS] < 10 || p[S_HOLD_10MS] > 100) return 0;
-  if(p[S_DEBOUNCE_MS] == 0 || p[S_DEBOUNCE_MS] > 30) return 0;
-  if(p[S_TAP_MS] == 0 || p[S_TAP_MS] > 50) return 0;
+  for(q = p + S_HOLD_10MS, l = HEADER_LIMITS; q <= p + S_TURN_HOLD; q++, l += 2)
+    if(*q < l[0] || *q > l[1]) return 0;
   if(p[S_START_PROFILE] >= n) return 0;
-  if(p[S_LED_SPEED] == 0 || p[S_LED_SPEED] > 10) return 0;
-  if(p[S_TURN_HOLD] > 30) return 0;
   for(i = 0; i < n; i++) {
     q = p + RECORDS_AT(i);
     if(q[3] > LED_LAST) return 0;
-    for(j = 0; j < nInputs; j++) {
-      end = q[PROFILE_HEAD + 3 * j] & ACT_TYPE_MASK;
+    for(j = 0, q += PROFILE_HEAD; j < nInputs; j++, q += 3) {
+      end = *q & ACT_TYPE_MASK;
       if(end > ACT_LAST) return 0;
       pad |= isPadType(end);
     }

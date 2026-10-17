@@ -661,10 +661,13 @@ const BOARDS = {
 };
 const pinName = k => k < 8 ? `P1.${k}` : `P3.${k - 8}`;
 const FLAG = { INVERT: 1, HALF: 2 };
-const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10, KEY_HOLD: 11, SEQ: 12 };
+const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10, SEQ: 11 };
 // records after the profiles: combos and sequences (see docs/protocol.md)
 const REC_END = 0xFF, REC_SEQ = 0x80, ST_TAP = 0x00, ST_HOLD = 0x20, ST_WAIT = 0x40, ST_REL = 0x60;
-const HOLD_MODS = 0xDD;                                  // modifiers KEY_HOLD keeps held: all but Shift
+const HOLD_MODS = 0xDD;                                  // modifiers an app switcher keeps held: all but Shift
+// "Keep Alt held, tap Tab" (app switchers) as two steps: hold the modifiers but Shift
+// (on a knob turn: until it stops), tap the key with Shift
+const holdTap = (m, mods, code) => A(T.SEQ, m.addSeq({ press: [{ op: "hold", a: A(T.KEY, mods & HOLD_MODS, 0) }, { op: "tap", a: A(T.KEY, mods & ~HOLD_MODS, code) }], release: [] }));
 const PROF_NEXT = 0xF0, PROF_PREV = 0xF1, ALL = 7, EMPTY = 0xFF, AXIS_FREE = 0x80, TYPE_MASK = 0x1F, NOW = 0x80;
 const EFFECTS = [
   ["off", "Off", "No light."],
@@ -742,7 +745,6 @@ function describe(a, short) {
   switch (a.t) {
     case T.NONE: return short ? "—" : "Nothing";
     case T.KEY: return keyText(a.p1, a.p2, short) || (short ? "—" : "Nothing");
-    case T.KEY_HOLD: return short ? keyText(a.p1, a.p2, true) : `${keyText(a.p1, a.p2)}, ${keyText(a.p1 & HOLD_MODS, 0)} held`;
     case T.MEDIA: { const u = a.p1 | a.p2 << 8; const m = MEDIA.find(x => x[0] === u); return m ? m[short ? 2 : 1] : `Media 0x${u.toString(16)}`; }
     case T.MOUSE: { const m = MOUSE.find(x => x[0] === a.p1); return m ? m[1] : "Mouse button"; }
     case T.SCROLL: {
@@ -780,10 +782,10 @@ function actionToText(a, m = model) {
   switch (a.t) {
     case T.SEQ: return "seq:" + seqToText(m.seqs.get(a.p1) || { press: [], release: [] });
     case T.NONE: return "none";
-    case T.KEY: case T.KEY_HOLD: {
+    case T.KEY: {
       const parts = MODS.filter(m => a.p1 & m[0]).map(m => m[2]);
       if (a.p2) parts.push(KEYS.get(a.p2)?.name ?? "0x" + a.p2.toString(16).padStart(2, "0"));
-      return "key:" + parts.join("+") + (a.t === T.KEY_HOLD ? ":hold" : "");
+      return "key:" + parts.join("+");
     }
     case T.MEDIA: { const u = a.p1 | a.p2 << 8; const m = MEDIA.find(x => x[0] === u); return "media:" + (m ? m[3] : "0x" + u.toString(16).padStart(3, "0")); }
     case T.MOUSE: return "mouse:" + (MOUSE.find(x => x[0] === a.p1)?.[2] ?? a.p1);
@@ -840,7 +842,7 @@ function textToAction(text, m = model) {
         else if (/^0x[0-9a-f]{1,2}$/.test(part)) code = parseInt(part, 16);
         else bad();
       }
-      return A(flag ? T.KEY_HOLD : T.KEY, mods, code);
+      return flag ? holdTap(m, mods, code) : A(T.KEY, mods, code);   // ":hold": older files
     }
     case "media": { const m = MEDIA.find(x => x[3] === arg); const u = m ? m[0] : parseInt(arg); if (isNaN(u)) bad(); return A(T.MEDIA, u & 255, u >> 8); }
     case "mouse": { const m = MOUSE.find(x => x[2] === arg); if (!m) bad(); return A(T.MOUSE, m[0]); }
@@ -859,7 +861,7 @@ function A(t, p1 = 0, p2 = 0) { return { t, p1, p2 }; }
 const sameAction = (a, b) => a.t === b.t && a.p1 === b.p1 && a.p2 === b.p2;
 const heldType = t => t === T.KEY || t === T.MEDIA || t === T.MOUSE || t === T.PAD;
 // usual choice for a key that starts combos: hold modifiers and gamepad buttons right away
-const defaultNow = a => (a.t === T.KEY && a.p1 && !a.p2) || a.t === T.PAD || a.t === T.KEY_HOLD;
+const defaultNow = a => (a.t === T.KEY && a.p1 && !a.p2) || a.t === T.PAD;
 
 // =============================================================================== settings model
 // The layout comes from the INFO command. Without a pad (demo), boardInfo() works it out
@@ -1149,10 +1151,12 @@ function applyPreset(m, p, which) {
     set(k[0], A(T.KEY, 8, 0x07)); set(k[1], A(T.KEY, 8, 0x08)); set(k[2], A(T.KEY, 8 | 2, 0x16));
     if (which === "windows") {
       // turn: Alt+Tab with Alt held until the knob stops; press: task view
-      set(L.knob, A(T.KEY, 8, 0x2B)); set(L.right, A(T.KEY_HOLD, 4, 0x2B)); set(L.left, A(T.KEY_HOLD, 4 | 2, 0x2B));
+      set(L.knob, A(T.KEY, 8, 0x2B));
+      if (L.turns) { set(L.right, holdTap(m, 4, 0x2B)); set(L.left, holdTap(m, 4 | 2, 0x2B)); }
     } else {
       // press: Alt+Tab with Alt held (the switcher opens at once); hold + turn: next / previous window
-      set(L.knob, A(T.KEY_HOLD, 4, 0x2B)); set(L.right, A(T.KEY, 1, 0x2B)); set(L.left, A(T.KEY, 1 | 2, 0x2B));
+      if (L.knob < L.buttons) m.setAction(p, L.knob, holdTap(m, 4, 0x2B), true);
+      set(L.right, A(T.KEY, 1, 0x2B)); set(L.left, A(T.KEY, 1 | 2, 0x2B));
       if (L.turns && L.knob < L.buttons) { combo(L.knob, L.right, A(T.KEY, 0, 0x2B)); combo(L.knob, L.left, A(T.KEY, 2, 0x2B)); }
     }
   } else if (which === "mouse") {
@@ -1618,7 +1622,7 @@ function field(title, hint, ...content) {
 
 // ---------------------------------------------------------------- action editor
 const CATS = [["key", "Keyboard"], ["media", "Media"], ["mouse", "Mouse"], ["pad", "Gamepad"], ["device", "Profile, lights"], ["steps", "Several steps"], ["none", "Nothing"]];
-const catOf = a => ({ [T.KEY]: "key", [T.KEY_HOLD]: "key", [T.SEQ]: "steps", [T.MEDIA]: "media", [T.MOUSE]: "mouse", [T.SCROLL]: "mouse", [T.MOVE]: "mouse", [T.PAD]: "pad",
+const catOf = a => ({ [T.KEY]: "key", [T.SEQ]: "steps", [T.MEDIA]: "media", [T.MOUSE]: "mouse", [T.SCROLL]: "mouse", [T.MOVE]: "mouse", [T.PAD]: "pad",
   [T.CENTER]: "device", [T.PROFILE]: "device", [T.LIGHT]: "device", [T.AXIS]: "pad" })[a.t] || "none";
 const pickerCat = {};
 
@@ -1641,7 +1645,7 @@ function actionEditor(id, a, onSet, opts = {}) {
       pickerCat[id] = k;
       if (k === "none") onSet(A(T.NONE));
       else if (k === "steps" && a.t !== T.SEQ)                 // start with the current action as step 1
-        onSet(A(T.SEQ, model.addSeq({ press: a.t === T.NONE ? [] : [{ op: "tap", a: a.t === T.KEY_HOLD ? A(T.KEY, a.p1, a.p2) : a }], release: [] })));
+        onSet(A(T.SEQ, model.addSeq({ press: a.t === T.NONE ? [] : [{ op: "tap", a }], release: [] })));
       else render();
     } }, n)));
   const body = h("div", { class: "pick-body" });
@@ -1666,8 +1670,7 @@ function actionEditor(id, a, onSet, opts = {}) {
 
 let recording = false;
 function keyEditor(a, set, opts = {}) {
-  const isKey = a.t === T.KEY || a.t === T.KEY_HOLD, mods = isKey ? a.p1 : 0, code = isKey ? a.p2 : 0;
-  const t = a.t === T.KEY_HOLD ? T.KEY_HOLD : T.KEY;      // editing keeps the hold choice
+  const isKey = a.t === T.KEY, mods = isKey ? a.p1 : 0, code = isKey ? a.p2 : 0, t = T.KEY;
   const rec = h("button", { class: "rec" + (recording ? " on" : ""), onclick: () => { recording = !recording; render(); } },
     recording ? "Press the keys now…" : (isKey && (mods || code) ? keyText(mods, code) : "Click, then press a shortcut"),
     h("small", { text: recording ? "Esc on its own cancels. Some shortcuts (like Win+L) are kept by the system: use the lists below." : "Records keys exactly as you press them." }));
@@ -1679,15 +1682,14 @@ function keyEditor(a, set, opts = {}) {
     h("option", { value: 0, text: "No key (modifiers only)", selected: !code }),
     Object.entries(groups).map(([g, ks]) => h("optgroup", { label: g }, ks.map(k => h("option", { value: k.u, selected: k.u === code, text: k.label })))));
   const out = h("div", {}, rec, h("div", { class: "sub-h", text: "Or pick" }), modRow, h("div", { class: "row", style: "margin-top:8px" }, keySel));
-  if (isKey && code && (mods & HOLD_MODS) && !opts.inStep) {
-    const held = keyText(mods & HOLD_MODS, 0), on = a.t === T.KEY_HOLD;
+  if (isKey && code && (mods & HOLD_MODS) && !opts.inStep) {   // app switchers: offer the two steps
+    const held = keyText(mods & HOLD_MODS, 0);
     const when = opts.turn ? `until the knob stops for ${(model.b[S.TURN_HOLD] || 8) / 10} s` : "while you hold the control";
     const tapped = (KEYS.get(code)?.label ?? "the key") + (mods & 0x22 ? " and Shift" : "");
     out.append(h("div", { class: "hold-opt" },
-      h("label", { class: "switch" }, h("input", { type: "checkbox", checked: on, "aria-label": `Keep ${held} held`,
-        onchange: e => set(A(e.target.checked ? T.KEY_HOLD : T.KEY, mods, code)) }), h("span")),
-      h("div", { class: "small" }, h("b", { text: `Keep ${held} held` }),
-        h("div", { class: "muted", text: `${held} stays down ${when}; ${tapped} ${opts.turn ? "is tapped on every click" : "is tapped once"}. For app switchers like Alt+Tab.` }))));
+      h("div", { class: "small" }, h("b", { text: `For app switchers like Alt+Tab` }),
+        h("div", { class: "muted", text: `Keep ${held} down ${when} and tap ${tapped} ${opts.turn ? "on every click" : "once"}.` }),
+        h("button", { class: "btn", style: "margin-top:8px", text: `Keep ${held} held`, onclick: () => set(holdTap(model, mods, code)) }))));
   }
   return out;
 }
@@ -1801,7 +1803,7 @@ window.addEventListener("keydown", e => {
   const k = KEY_BY_CODE.get(e.code);
   if (!k) { toast(`That key can't be recorded (${e.code}). Pick it from the list instead.`, true); return; }
   recording = false;
-  applyRecorded(A(T.KEY, mods, k.u), true);
+  applyRecorded(A(T.KEY, mods, k.u));
 }, true);
 window.addEventListener("keyup", e => {
   if (!recording || !MOD_CODES[e.code]) return;
@@ -1813,10 +1815,8 @@ function previewRecord(mods) {
   pendingMods = mods;
   const r = document.querySelector(".rec"); if (r) r.firstChild.textContent = keyText(mods, 0) + " + …";
 }
-function applyRecorded(a, keepHold) {
+function applyRecorded(a) {
   pendingMods = 0;
-  const cur = pickerActions.get(openPicker);
-  if (keepHold && cur && cur.t === T.KEY_HOLD) a = A(T.KEY_HOLD, a.p1, a.p2);
   const target = pickerSetters.get(openPicker);
   if (target) target(a);
   render();

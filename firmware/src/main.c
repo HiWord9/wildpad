@@ -266,7 +266,7 @@ static void clearAction(__xdata action_t* a) {
 }
 
 static void copyAction(__xdata action_t* dst, __xdata action_t* src) {
-  dst->type = src->type == ACT_KEY_HOLD ? ACT_KEY : src->type;
+  dst->type = src->type;
   dst->p1 = src->p1;
   dst->p2 = src->p2;
   recompose = 1;
@@ -274,7 +274,7 @@ static void copyAction(__xdata action_t* dst, __xdata action_t* src) {
 
 // Actions that stay active while their input is held
 static __bit isHeldType(uint8_t t) {
-  return t == ACT_KEY || t == ACT_KEY_HOLD || t == ACT_MEDIA || t == ACT_MOUSE_BTN || t == ACT_PAD_BTN;
+  return t == ACT_KEY || t == ACT_MEDIA || t == ACT_MOUSE_BTN || t == ACT_PAD_BTN;
 }
 
 static void changeBrightness(int8_t d) {
@@ -452,7 +452,7 @@ static __xdata uint16_t turnTime;                 // last knob click
 static __bit turnHeld;                            // knob directions hold something
 
 static void addHeld(uint8_t owner, __xdata action_t* a) {
-  uint8_t i, t = a->type == ACT_KEY_HOLD ? ACT_KEY : a->type;
+  uint8_t i, t = a->type;
   for(i = 0; i < HELD_MAX; i++)                     // already held by this owner?
     if(heldOwner[i] == owner + 1 && held[i].type == t && held[i].p1 == a->p1 && held[i].p2 == a->p2) return;
   for(i = 0; i < HELD_MAX; i++) {
@@ -535,13 +535,6 @@ static void runAction(__xdata action_t* a, uint8_t owner, uint8_t hold) {
     if(findSeq(p1)) { runPos = seqStart; runEnd = seqMark; runOwner = owner; }
     return;
   }
-  if(t == ACT_KEY_HOLD) {                                      // modifiers held, key tapped
-    if(owner != NO_OWNER) {
-      tmpAct.type = ACT_KEY; tmpAct.p1 = p1 & HOLD_MODS; tmpAct.p2 = 0;
-      addHeld(owner, &tmpAct);
-    }
-    t = ACT_KEY;
-  }
   if(!isHeldType(t)) { oneShot(a); return; }
   if(hold && owner != NO_OWNER && ownerActive(owner)) { addHeld(owner, a); return; }
   tapAct.type = t; tapAct.p1 = p1; tapAct.p2 = p2;
@@ -606,7 +599,7 @@ static void RUN_task(void) {
       qLen--;
       a = (entry & 0x0F) == NO_INPUT ? baseAction(entry >> 4) : findCombo(entry & 0x0F, entry >> 4);
       if(!a) continue;
-      if(turnHeld && a->type != ACT_KEY_HOLD && a->type != ACT_SEQ) releaseTurns();
+      if(turnHeld && a->type != ACT_SEQ) releaseTurns();
       turnTime = now;
       runAction(a, entry >> 4, 0);
     }
@@ -646,11 +639,6 @@ static void startAction(uint8_t i, __xdata action_t* a) {
         btnSeq[i] = a->p1 + 1;
         addJob(JOB_RUN, seqStart, seqMark, i);
       }
-      break;
-    case ACT_KEY_HOLD:                                         // modifiers now, key tapped
-      tmpAct.type = ACT_KEY; tmpAct.p1 = a->p1 & HOLD_MODS; tmpAct.p2 = 0;
-      addHeld(i, &tmpAct);
-      addJob(JOB_TAP, ACT_KEY, a->p1, a->p2);
       break;
     case ACT_PROFILE:
       if(a->p2 == PROF_WHILE_HELD && a->p1 < nProf) {         // remember where to return
