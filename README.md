@@ -5,9 +5,10 @@
 
 These little macropads are sold under dozens of brand names: three or six mechanical
 keys, a clickable rotary knob, RGB LEDs and a WCH CH552 microcontroller (stock USB ID
-`1189:8890`, configured with an app called “MINI KeyBoard”). One Wildpad firmware runs
-all of them, and a pad it doesn't know yet is set up by pressing its keys once. The stock firmware loses most knob clicks as soon as you turn it with
-any speed, and its app can only assign a key per button. Wildpad replaces both.
+`1189:8890`, configured with an app called “MINI KeyBoard”). The stock firmware loses
+most knob clicks as soon as you turn it with any speed, and its app can only assign a
+key per button. Wildpad replaces both. One Wildpad firmware runs all of these pads,
+and one it doesn't know yet is set up by pressing its keys once.
 
 ## What you get
 
@@ -25,10 +26,10 @@ any speed, and its app can only assign a key per button. Wildpad replaces both.
 - **Several steps.** Any action can be a short sequence: tap things, hold something
   for as long as you hold the control, wait, and do more when you let go. For example
   *tap A, tap A again, then hold RT* for a double jump and throttle in a game.
-- **App switchers.** A shortcut can keep Ctrl / Alt / Win held while the key is tapped:
-  on a key for as long as you hold it, on the knob for as long as you keep turning.
-  *Turn the knob* and windows switch like Alt+Tab, stop and the window is picked; or
-  *press the knob* to open the switcher and turn to move through it.
+- **App switchers.** The steps *hold Alt, tap Tab* keep Alt held on a key for as long
+  as you hold it, on the knob for as long as you keep turning: *turn the knob* and
+  windows switch like Alt+Tab, stop and the window is picked; or *press the knob* to
+  open the switcher and turn to move through it.
 - **Three profiles**, each with its own light color and effect; switch with a combo,
   a key or the app.
 - **Gamepad axis.** The knob can be an absolute gamepad axis (stick or triggers) with a
@@ -39,6 +40,8 @@ any speed, and its app can only assign a key per button. Wildpad replaces both.
 - **Setup in the browser.** Click a key on the drawing, pick what it does, done: every
   change takes effect on the pad immediately and is saved on it. Undo, presets, backup
   to a file. A command-line tool does the same.
+- **Updates from the browser**, without a driver: the pad hands its own USB
+  connection to the chip's bootloader.
 - **Safe to try.** The CH552 bootloader lives in ROM, so a macropad can always be
   re-flashed.
 
@@ -60,8 +63,9 @@ With Wildpad, the same fast turns deliver exactly 20 events each.
 
 ## Quick start (Windows)
 
-You need [Python 3](https://www.python.org/downloads/) (`winget install Python.Python.3.12`)
-and Chrome, Edge or Opera. Download the latest release and unzip it.
+You need Chrome, Edge or Opera. The setup page runs from the project's website, or
+from the release download (`configure.bat`, which needs
+[Python 3](https://www.python.org/downloads/): `winget install Python.Python.3.12`).
 
 ### 1. Flash
 
@@ -159,7 +163,7 @@ python tools/wildpad.py actions                    # all action and key names
 ## Building
 
 ```
-winget install SDCC.SDCC                  # or: apt install sdcc sdcc-ucsim
+winget install SDCC.SDCC                  # SDCC 4.5 (see below)
 python firmware/build.py                  # -> firmware/build/wildpad.bin
 python firmware/test/run_tests.py         # tests in the s51 8051 simulator
 python firmware/test/check_descriptors.py # USB descriptor checks on the binary
@@ -168,7 +172,10 @@ python firmware/test/check_descriptors.py # USB descriptor checks on the binary
 The tests run the real firmware sources in a simulator with the USB layer stubbed
 out: knob decoding (slow, fast, bounce, reversals), every click becoming exactly one
 press and release, combos with keys and the knob, long press, profile switching and
-the gamepad axis. `build.py` works around a packaging bug of SDCC 4.5 on Windows.
+the gamepad axis, multi-step actions, app switchers and a 6-key board. The firmware
+fills the 14 KB of code flash almost completely and is sized for SDCC 4.5; older
+versions may not fit it (on Linux, use the 4.5 release archive like the release
+workflow does). `build.py` works around a packaging bug of SDCC 4.5 on Windows.
 
 ## Boards
 
@@ -184,10 +191,10 @@ pad fits 2 profiles, the 3-key pad 3. See [docs/porting.md](docs/porting.md).
 |---|---|
 | `firmware/src/input.c` | Timer interrupt: quadrature decoder, key debounce, millisecond clock |
 | `firmware/src/main.c` | Action engine: profiles, combos, long press, knob step queue, gamepad report, lights, configuration protocol |
-| `firmware/src/usbdev.c`, `descr.c` | USB device with two layouts (keyboard; keyboard + gamepad) |
+| `firmware/src/usbdev.c`, `descr.c` | USB device with three layouts: keyboard; keyboard + gamepad; update mode |
 | `firmware/src/settings.c` | Settings in the 128-byte Data-Flash, factory settings |
 | `tools/configurator.html` | Setup page (WebHID) |
-| `tools/flash.py`, `winusb.py` | Flasher; talks WinUSB directly on Windows |
+| `tools/flash.py`, `winusb.py` | Flasher (update mode, or the chip's bootloader through WinUSB or libusb-win32) |
 | `tools/wildpad.py` | Command-line tool |
 
 With a gamepad action the pad is a composite USB device: a HID keyboard/mouse, a vendor
@@ -198,9 +205,9 @@ Microsoft IDs are borrowed. The configuration protocol and the settings layout a
 documented in [docs/protocol.md](docs/protocol.md).
 
 Settings live in the chip's 128-byte Data-Flash, which limits how much fits. Combos
-and multi-step actions share what the profiles leave: 49 bytes with 3 profiles (a
-combo takes 4, a step 3, a wait 1), 93 bytes with a single profile. The setup page
-shows how much is used. Long text macros don't fit.
+and multi-step actions share what the profiles leave: on the 3-key pad 48 bytes with
+3 profiles (a combo takes 4, a step 3, a wait 1), 92 bytes with a single profile. The
+setup page shows how much is used. Long text macros don't fit.
 
 ## Credits and license
 
