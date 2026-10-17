@@ -201,7 +201,9 @@ select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
   content: ""; position: absolute; left: 50%; top: 9px; width: 4px; height: 18px; margin-left: -2px;
   border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent);
 }
-.knob-wrap .sel-ring { inset: -8px -8px auto -8px; height: 148px; border-radius: 50%; }
+.knob-holder { position: relative; display: grid; }
+.knob-holder .sel-ring { inset: -8px; border-radius: 50%; }
+.knob-wrap[data-selected="true"] .sel-ring { opacity: 1; }
 .knob-legend { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 12px; color: #c9cfd5; min-width: 150px; }
 .knob-legend b { font-weight: 560; color: #8d959e; }
 .knob-legend span { color: #e6e9ec; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
@@ -374,7 +376,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
   .glow { top: 41px; width: 90px; height: 90px; }
   .knob-wrap { margin-left: 0; flex-direction: row; gap: 16px; }
   .knob { width: 104px; height: 104px; }
-  .knob-wrap .sel-ring { height: 120px; width: 120px; inset: -8px auto auto -8px; }
   .setting { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .right { justify-self: start; }
   .combo, .inspector .combo { grid-template-columns: minmax(0, 1fr) auto; }
@@ -1131,7 +1132,11 @@ async function attach(d) {
       if (e.data.byteLength < 5) return;
       const prev = live;
       live = { pos: e.data.getInt16(0, true), btn: e.data.getUint8(2), prof: e.data.getUint8(3), flags: e.data.getUint8(4) };
-      if (live.prof !== prev.prof && live.prof !== prof) { prof = live.prof; render(); } else renderLive();
+      if (live.prof !== prev.prof) {                       // the pad switched profiles
+        if (live.prof !== prof) prof = live.prof;
+        render();
+      }
+      else renderLive();
     };
     if (reconnecting) toast("Reconnected");
     reconnecting = false;
@@ -1290,9 +1295,10 @@ function renderDevice(px = "") {
               h("b", { text: "Left" }), h("span", { text: describe(model.action(prof, L.left), true) })],
       h("b", { text: "Press" }), h("span", { text: describe(model.action(prof, L.knob), true) }));
     d.append(h("div", { class: "knob-wrap", "data-selected": selected ? "true" : "false" },
-      h("span", { class: "sel-ring" }),
-      h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob }) },
-        h("span", { class: "knob-top", id: px + "knobTop" })),
+      h("div", { class: "knob-holder" },                      // the ring follows the knob, not the legend
+        h("span", { class: "sel-ring" }),
+        h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob }) },
+          h("span", { class: "knob-top", id: px + "knobTop" }))),
       legend));
   }
 }
