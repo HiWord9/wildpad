@@ -3,7 +3,6 @@
 **The wildcard for your macropad.** Open firmware and setup app for the cheap CH552
 “keys + knob” macropads: every knob click counts, every control does what you want.
 
-
 These little macropads are sold under dozens of brand names: three or six mechanical
 keys, a clickable rotary knob, RGB LEDs and a WCH CH552 microcontroller (stock USB ID
 `1189:8890`, configured with an app called “MINI KeyBoard”). One Wildpad firmware runs
@@ -98,6 +97,21 @@ needs the Zadig driver like the first flash).
 Run **`configure.bat`**. It opens the setup page; click *Connect* and pick the
 macropad (only needed the first time). Click a key or the knob on the drawing and
 choose what it does.
+
+## Linux and macOS
+
+The setup page works the same in Chrome or Edge, and no driver is needed: the first
+install and updates run from the page. On **Linux** the browser may use the pad only
+after an udev rule is installed once:
+
+```
+sudo cp tools/60-wildpad.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Serve the page with `python3 -m http.server 8765` in the Wildpad folder and open
+`http://127.0.0.1:8765/tools/configurator.html`. The command-line tools need
+`pip install hidapi pyusb`.
 
 ## Factory settings
 

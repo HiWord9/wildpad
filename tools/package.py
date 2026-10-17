@@ -30,7 +30,7 @@ def main():
         ROOT / "LICENSE": "LICENSE",
         ROOT / "firmware" / "LICENSE": "firmware/LICENSE",
     }
-    for name in ("flash.py", "winusb.py", "wildpad.py", "configurator.html", "find_python.cmd"):
+    for name in ("flash.py", "winusb.py", "wildpad.py", "configurator.html", "find_python.cmd", "60-wildpad.rules"):
         files[ROOT / "tools" / name] = f"tools/{name}"
     for doc in (ROOT / "docs").iterdir():
         files[doc] = f"docs/{doc.name}"

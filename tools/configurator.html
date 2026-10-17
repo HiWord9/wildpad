@@ -2098,6 +2098,15 @@ async function updateFirmware() {
 // From the factory firmware: the chip's own bootloader, entered by shorting two pads
 // while plugging in. Windows needs the WinUSB driver for it once (Zadig).
 const isWindows = /Windows/i.test(navigator.userAgent);
+const isLinux = /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent);
+// Linux lets the browser use USB devices only with an udev rule (once per computer)
+function linuxTip() {
+  return isLinux ? h("div", { class: "tip" },
+    h("b", { text: "Linux: " }), "let the browser use the pad once. Download ",
+    h("a", { href: "60-wildpad.rules", download: "60-wildpad.rules", text: "60-wildpad.rules" }), ", then run ",
+    copyChip("sudo cp 60-wildpad.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules && sudo udevadm trigger"),
+    " in the folder you saved it to.") : null;
+}
 const guide = { step: 0, board: 1, busy: false, done: false, alt: false };
 
 function guideSteps() {
@@ -2131,6 +2140,7 @@ function renderGuide() {
         h("button", { class: "board-card", "aria-pressed": guide.board === id ? "true" : "false", onclick: () => { guide.board = id; renderGuide(); } },
           keys ? miniBoard(keys, cols, true) : h("div", { class: "mini-q", text: "?" }), h("span", { text: name })))),
       !("usb" in navigator) ? h("p", { class: "tip", text: "This browser can't install firmware. Open this page in Chrome or Edge on a computer." }) : null,
+      linuxTip(),
       !fwImage ? h("p", { class: "tip", text: "The firmware file isn't loaded: pick wildpad.bin under Settings → Firmware → Use a file… first." }) : null);
   } else if (key === "driver") {
     fill(h("h3", { text: "Install the USB driver (once per computer)" }),
