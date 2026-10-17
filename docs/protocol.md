@@ -1,4 +1,4 @@
-# Configuration protocol (version 3)
+# Configuration protocol (version 3, settings version 5)
 
 The firmware exposes a vendor HID interface (usage page `0xFF54`, usage `0x01`) on
 interface 1 whenever it runs as a keyboard (with or without the gamepad). It has two
@@ -35,12 +35,13 @@ matching `cmd` and `seq` (poll every few milliseconds; `seq` should cycle throug
 | 4 | COMMIT | – | byte 0: 1 if the USB layout must change (validates staging and makes it live; status 2 if invalid) |
 | 5 | SAVE | – | byte 0: as COMMIT (stores the live settings in Data-Flash) |
 | 6 | DEFAULTS | – | byte 0: as COMMIT (live settings = factory settings, not saved) |
-| 7 | STATUS | – | bytes 0–4 like the live input report; bytes 8–16 the keyboard report being sent (report id, modifiers, reserved, 6 keys) |
+| 7 | STATUS | – | bytes 0–4 like the live input report; bytes 5, 6 the raw P1 and P3 port pins (to find a board's keys); bytes 8–16 the keyboard report being sent (report id, modifiers, reserved, 6 keys) |
 | 8 | RECENTER | – | – (knob axis center = current position) |
 | 9 | REBOOT | – | – (device reconnects) |
 | 10 | BOOTLOADER | – | – (device reappears as the CH552 bootloader `4348:55E0`) |
 | 11 | PROFILE | offset = profile (0-based) | – (switch the active profile) |
 | 12 | INJECT | offset = buttons held (bit *i* = button *i*), length = knob clicks (int8) | – (acts as if the buttons were held and the knob turned; for automated tests) |
+| 13 | BOARD | offset = board (1 … 3), or 0 with the 10-byte pin map as data | byte 0: as COMMIT (live settings = factory settings for that board, not saved; status 2 if the map is invalid) |
 
 To change settings: READ everything, modify, WRITE all chunks, COMMIT, then SAVE. If
 SAVE reports that the USB layout must change (an action now needs the gamepad, or no
@@ -51,7 +52,7 @@ INFO payload:
 | Byte | Meaning |
 |---|---|
 | 0–2 | firmware version major, minor, patch |
-| 3 | board id |
+| 3 | board: 1 … 3 known board, 0 own pin map (see Boards) |
 | 4 | buttons (keys + knob switch) |
 | 5 | index of the knob switch |
 | 6 | settings size (128) |
@@ -62,8 +63,9 @@ INFO payload:
 | 11 | offset of the first profile |
 | 12 | size of one profile |
 | 13 | offset of the records with all profiles in use (each unused profile moves it back by the profile size) |
-| 14 | settings version (4) |
+| 14 | settings version (5) |
 | 15 | active profile |
+| 16 | inputs (buttons, plus 2 when the board has a knob) |
 
 Older firmware: protocol 2 (early previews) had a fixed 104-byte layout with
 keyboard and wheel modes; protocol 1 used `READ = 1` and `BOOTLOADER = 8`. The flasher
@@ -72,13 +74,14 @@ recognises both by the protocol byte of the cmd 1 response.
 ## Settings (128 bytes)
 
 Inputs are numbered: buttons `0 … B-1` (B = buttons from INFO), then *knob right* (B)
-and *knob left* (B + 1). Offsets below are for the 3-key board (B = 4, profiles of 22
-bytes from offset 12); other boards use the sizes from INFO.
+and *knob left* (B + 1) on boards with a knob. A profile is 4 + 3 × inputs bytes. The
+profiles start at offset 13 (23 with an own pin map); INFO reports all of these for
+the live settings. Sizes below are for the 3-key board (6 inputs, profiles of 22 bytes).
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | magic `0xA5` |
-| 1 | 1 | settings version `4` |
+| 1 | 1 | settings version `5` |
 | 2 | 1 | flags: 1 reverse knob, 2 half-step knob (other bits reserved, keep 0) |
 | 3 | 1 | LED brightness (0–255) |
 | 4 | 1 | hold time for long presses, 10 ms units (10–100) |
@@ -89,12 +92,29 @@ bytes from offset 12); other boards use the sizes from INFO.
 | 9 | 1 | light animation speed (1–10) |
 | 10 | 1 | switcher hold after turning: what a knob turn holds (type 11 modifiers, *hold* steps) is let go this long after the last click, 100 ms units (2–30; 0 = 8) |
 | 11 | 1 | profiles in use, 1 … max (0 = all) |
-| 12 | 22 × n | the n profiles in use: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see below) |
+| 12 | 1 | board: 1 … 3 known board, 0 own pin map (see Boards) |
+| 13 | 10 | pin map, only when byte 12 is 0 |
+| 13 / 23 | 22 × n | the n profiles in use: red, green, blue, light effect, then one action per input (bit 0x80 of a button's type: right away, see below) |
 | after | rest | records: combos and sequences, packed, then `0xFF` |
 | 127 | 1 | checksum: sum of bytes 0–126, modulo 256 |
 
-Every profile that is not in use leaves its 22 bytes to the records: with 3 profiles
-there are 49 bytes for combos and sequences, with 1 profile 93.
+Every profile that is not in use leaves its bytes to the records: on the 3-key board
+3 profiles leave 48 bytes for combos and sequences, 1 profile 92. The 6-key board has
+9 inputs, profiles of 31 bytes and room for 2 of them (52 bytes of records).
+
+### Boards
+
+| Board | Keys (in order) | Knob switch | LEDs |
+|---|---|---|---|
+| 1 | P1.1, P1.7, P1.6 | P3.3 | 3 |
+| 2 | P3.2, P1.4, P1.5, P1.6, P1.7, P1.1 | P3.3 | 6, chain runs from the last key |
+| 3 | P1.1, P1.7, P1.6, P1.5, P1.4, P3.2 | P3.3 | 6 |
+
+All of them have the knob phases on P3.1 (A) and P3.0 (B) and the WS2812 chain on P3.4.
+An own pin map (board 0) is 10 bytes: byte 0 = buttons (keys + knob switch, 1–8) |
+knob switch index << 4 (15: no switch); byte 1 = LEDs (0–8) | 0x10 chain runs from the
+last key | 0x20 no knob; bytes 2–9 = pin of each button, P1.*x* = *x*, P3.*x* = 8 + *x*,
+unused `0xFF`. LED *i* sits under button *i*.
 
 Light effects: 0 off, 1 solid, 2 breathe, 3 rainbow, 4 light on press, 5 knob position
 (gamepad axis; solid otherwise).
@@ -163,7 +183,8 @@ present whenever any action, combo or step uses type 6 or 7.
 
 ```json
 {
-  "format": "wildpad-settings", "version": 4,
+  "format": "wildpad-settings", "version": 5,
+  "board": { "id": 1, "inputs": ["key1", "key2", "key3", "knob", "right", "left"] },
   "options": { "brightness": 128, "holdMs": 300, "debounceMs": 5, "tapMs": 4,
                "clicksPerTurn": 20, "profiles": 3, "startProfile": 1, "lightSpeed": 5,
                "turnHoldMs": 800, "reverseKnob": false, "halfStep": false },

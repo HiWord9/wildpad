@@ -157,7 +157,7 @@ select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
     inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.35),
     0 1px 2px rgba(0,0,0,.25), 0 22px 40px -18px rgba(0,0,0,.55), 0 40px 70px -40px rgba(0,0,0,.4);
 }
-.keys { display: flex; gap: 16px; }
+.keys { display: grid; grid-auto-flow: row; gap: 16px; }
 .cap-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .glow {
   position: absolute; left: 50%; top: 50px; width: 110px; height: 110px; transform: translate(-50%, -50%);
@@ -360,6 +360,28 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .toast.err { background: var(--danger); color: #fff; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
 
+/* ---------------------------------------------------------------- board choice */
+.board-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.board-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: var(--ink);
+  font: inherit; font-size: 13px; text-align: center; cursor: pointer;
+}
+.board-card:hover { border-color: var(--ink-3); }
+.board-card[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.board-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mini { display: flex; align-items: center; gap: 7px; }
+.mini-keys { display: grid; gap: 3px; }
+.mini-keys i { width: 14px; height: 14px; border-radius: 3px; background: var(--ink-3); }
+.mini-knob { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--ink-3); }
+.mini-q { width: 52px; height: 32px; border-radius: 6px; border: 2px dashed var(--ink-3); display: grid; place-items: center; font-weight: 700; color: var(--ink-3); }
+.wiz { margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--line-2); font-size: 14px; }
+.wiz h3 { margin: 0 0 6px; font-size: 14px; }
+.wiz p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
+.wiz-found { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.wiz-found span { padding: 3px 8px; border-radius: 6px; background: var(--raised); border: 1px solid var(--line); font-size: 12px; font-variant-numeric: tabular-nums; }
+.wiz .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
 @media (max-width: 980px) {
   .view { grid-template-columns: minmax(0, 1fr); }
   .inspector { position: static; }
@@ -474,6 +496,22 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
   <section class="view single hidden" id="view-settings">
     <div class="col">
       <div class="panel">
+        <div class="panel-h"><h2>Board</h2></div>
+        <div class="panel-b">
+          <div class="setting"><div><h3 id="boardName">3 keys and a knob</h3><p id="boardText">Wildpad runs many CH552 pads. Tell it which one this is, so each key does what you set.</p></div>
+            <button class="btn right" id="boardChange">Change board</button></div>
+          <div class="hidden" id="boardPick">
+            <p class="note">Choosing a board starts over with factory settings for it. Save a backup below first if you want to keep yours.</p>
+            <div class="board-list" id="boardList"></div>
+            <div class="confirm hidden" id="boardConfirm">
+              <span id="boardConfirmText"></span>
+              <button class="btn danger" id="boardYes">Use this board</button><button class="btn" id="boardNo">Cancel</button>
+            </div>
+            <div class="wiz hidden" id="boardWizard"></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-h"><h2>Knob</h2></div>
         <div class="panel-b">
           <div class="setting"><div><h3>Reverse direction</h3><p>Swap turning right and left.</p></div>
@@ -540,10 +578,19 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 <script>
 "use strict";
 // =============================================================================== protocol
-const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 3, SVER = 4;
-const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11 };
+const VID = 0x1189, PID = 0x8890, PAGE = 0xFF54, FLEN = 40, CHUNK = 32, PROTO = 3, SVER = 5;
+const CMD = { INFO: 1, READ: 2, WRITE: 3, COMMIT: 4, SAVE: 5, DEFAULTS: 6, STATUS: 7, RECENTER: 8, REBOOT: 9, BOOT: 10, PROFILE: 11, INJECT: 12, BOARD: 13 };
 const STATUS_TEXT = { 1: "unknown command", 2: "invalid settings", 3: "bad offset or length" };
-const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10, PROFILES: 11 };
+const S = { MAGIC: 0, VERSION: 1, FLAGS: 2, BRIGHT: 3, HOLD: 4, DEBOUNCE: 5, TAP: 6, DETENTS: 7, START: 8, SPEED: 9, TURN_HOLD: 10, PROFILES: 11, BOARD: 12, MAP: 13 };
+// Boards: the same table as BOARDS in firmware/src/settings.c. A map is
+// [buttons | knob switch index << 4, LEDs | flags, pin of each button (P1.x = x, P3.x = 8 + x)].
+const MAP_LEN = 10, MAP_LED_REVERSED = 0x10, MAP_NO_KNOB = 0x20, NO_KNOB = 15;
+const BOARDS = {
+  1: { name: "3 keys and a knob", map: [0x34, 3, 1, 7, 6, 11] },
+  2: { name: "6 keys and a knob", map: [0x67, 0x16, 10, 4, 5, 6, 7, 1, 11] },
+  3: { name: "6 keys and a knob, wired in reverse", map: [0x67, 6, 1, 7, 6, 5, 4, 10, 11] },
+};
+const pinName = k => k < 8 ? `P1.${k}` : `P3.${k - 8}`;
 const FLAG = { INVERT: 1, HALF: 2 };
 const T = { NONE: 0, KEY: 1, MEDIA: 2, MOUSE: 3, SCROLL: 4, MOVE: 5, PAD: 6, AXIS: 7, CENTER: 8, PROFILE: 9, LIGHT: 10, KEY_HOLD: 11, SEQ: 12 };
 // records after the profiles: combos and sequences (see docs/protocol.md)
@@ -746,17 +793,36 @@ const heldType = t => t === T.KEY || t === T.MEDIA || t === T.MOUSE || t === T.P
 const defaultNow = a => (a.t === T.KEY && a.p1 && !a.p2) || a.t === T.PAD || a.t === T.KEY_HOLD;
 
 // =============================================================================== settings model
-// Layout comes from the INFO command, so boards with more keys work unchanged.
-const DEMO_INFO = [1, 0, 0, 1, 4, 3, 128, 3, 0, 3, 49, 12, 22, 78, 4, 0];
+// The layout comes from the INFO command. Without a pad (demo), boardInfo() works it out
+// the way SET_layout() in the firmware does.
+function boardInfo(board, map) {
+  map = board ? BOARDS[board].map : map;
+  const buttons = map[0] & 15, knob = map[0] >> 4, leds = map[1] & 15, hasKnob = !(map[1] & MAP_NO_KNOB);
+  const inputs = buttons + (hasKnob ? 2 : 0), profOff = board ? 13 : 13 + MAP_LEN, profSize = 4 + 3 * inputs;
+  let profiles = 3;
+  while (profiles > 1 && profOff + profiles * profSize + 24 > 127) profiles--;
+  const recOff = profOff + profiles * profSize;
+  return [1, 0, 0, board, buttons, knob, 128, profiles, 0, leds, 127 - recOff, profOff, profSize, recOff, SVER, 0, inputs];
+}
+const DEMO_INFO = boardInfo(1);
 
 class Layout {
   constructor(r) {
     this.fw = `${r[0]}.${r[1]}.${r[2]}`; this.board = r[3]; this.buttons = r[4]; this.knob = r[5];
     this.size = r[6]; this.profiles = r[7]; this.usb = r[8]; this.leds = r[9]; this.recSize = r[10];
     this.profOff = r[11]; this.profSize = r[12]; this.recOff = r[13]; this.version = r[14]; this.current = r[15];
-    this.inputs = this.buttons + 2; this.right = this.buttons; this.left = this.buttons + 1;
+    this.inputs = r[16] ?? this.buttons + 2;
+    this.turns = this.inputs > this.buttons;                // has a rotary encoder
+    this.right = this.turns ? this.buttons : -1; this.left = this.turns ? this.buttons + 1 : -1;
     this.keys = []; let n = 1;
     for (let i = 0; i < this.buttons; i++) if (i !== this.knob) this.keys.push({ i, n: n++ });
+    this.cols = this.keys.length <= 4 ? this.keys.length : Math.ceil(this.keys.length / 2);
+  }
+  get hasKnob() { return this.knob < this.buttons || this.turns; }
+  get boardName() {
+    if (BOARDS[this.board]) return BOARDS[this.board].name;
+    const k = this.keys.length;
+    return `${k} key${k === 1 ? "" : "s"}` + (this.hasKnob ? " and a knob" : "") + " (your own map)";
   }
   name(i) {
     if (i === this.right) return "Turn right";
@@ -834,7 +900,10 @@ class Model {
   }
   clone() { return new Model(this.L, this.bytes()); }
   po(p) { return this.L.profOff + p * this.L.profSize; }
-  action(p, i) { const o = this.po(p) + 4 + 3 * i; return A(this.b[o] & TYPE_MASK, this.b[o + 1], this.b[o + 2]); }
+  action(p, i) {
+    if (i < 0 || i >= this.L.inputs) return A(T.NONE);
+    const o = this.po(p) + 4 + 3 * i; return A(this.b[o] & TYPE_MASK, this.b[o + 1], this.b[o + 2]);
+  }
   // now: send a button's own action on press even when it starts combos (undefined = usual choice)
   setAction(p, i, a, now) {
     const o = this.po(p) + 4 + 3 * i, flag = i < this.L.buttons && (now ?? defaultNow(a)) ? NOW : 0;
@@ -918,7 +987,8 @@ class Model {
     const L = this.L, b = this.b, f = b[S.FLAGS];
     const names = Array.from({ length: L.inputs }, (_, i) => L.fileName(i));
     return {
-      format: "wildpad-settings", version: SVER, board: { inputs: names },
+      format: "wildpad-settings", version: SVER,
+      board: L.board ? { id: L.board, inputs: names } : { id: 0, inputs: names, map: Array.from(b.subarray(S.MAP, S.MAP + MAP_LEN)) },
       options: { brightness: b[S.BRIGHT], holdMs: b[S.HOLD] * 10, debounceMs: b[S.DEBOUNCE], tapMs: b[S.TAP],
         clicksPerTurn: b[S.DETENTS], profiles: this.np, startProfile: b[S.START] + 1, lightSpeed: b[S.SPEED], turnHoldMs: (b[S.TURN_HOLD] || 8) * 100,
         reverseKnob: !!(f & FLAG.INVERT), halfStep: !!(f & FLAG.HALF) },
@@ -932,6 +1002,9 @@ class Model {
   fromJSON(j) {
     if (j.format !== "wildpad-settings" && j.format !== "detent-settings") throw new Error("this is not a Wildpad settings file");
     const L = this.L, b = this.b, o = j.options || {}, clamp = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : d));
+    const fb = j.board?.id;
+    if (fb !== undefined && (fb !== L.board || (fb === 0 && String(j.board.map) !== String(Array.from(b.subarray(S.MAP, S.MAP + MAP_LEN))))))
+      throw new Error(`it is for another board (${BOARDS[fb]?.name || "a board of its own"}). Choose that board under Settings first`);
     b[S.BRIGHT] = clamp(o.brightness, 0, 255, b[S.BRIGHT]);
     b[S.HOLD] = clamp(Math.round((o.holdMs ?? b[S.HOLD] * 10) / 10), 10, 100, 30);
     b[S.DEBOUNCE] = clamp(o.debounceMs, 1, 30, b[S.DEBOUNCE]);
@@ -961,17 +1034,24 @@ class Model {
   }
 }
 
-// Factory settings, same bytes as SET_defaults() in firmware/src/settings.c
-function factory(L) {
+// Factory settings, same bytes as SET_defaults() in firmware/src/settings.c. A board of
+// its own keeps its pin map from `from`.
+function factory(L, from) {
   const b = new Uint8Array(L.size);
   b.fill(REC_END, recordsAt(L, L.profiles));
   b.set([0xA5, SVER, 0, 128, 30, 5, 4, 20, 0, 5, 8], 0);
+  b[S.BOARD] = L.board;
+  if (!L.board && from) b.set(from.b.subarray(S.MAP, S.MAP + MAP_LEN), S.MAP);
   const m = new Model(L, b);
   const K = L.knob;
   let slot = 0;
-  L.keys.slice(0, 3).forEach((k, n) => { if (n < L.profiles) m.setCombo(slot++, { held: K, trig: k.i, prof: ALL, a: A(T.PROFILE, n, 0) }); });
-  m.setCombo(slot++, { held: K, trig: L.right, prof: ALL, a: A(T.LIGHT, 1) });
-  m.setCombo(slot++, { held: K, trig: L.left, prof: ALL, a: A(T.LIGHT, 2) });
+  if (K < L.buttons) {
+    L.keys.slice(0, 3).forEach((k, n) => { if (n < L.profiles) m.setCombo(slot++, { held: K, trig: k.i, prof: ALL, a: A(T.PROFILE, n, 0) }); });
+    if (L.turns) {
+      m.setCombo(slot++, { held: K, trig: L.right, prof: ALL, a: A(T.LIGHT, 1) });
+      m.setCombo(slot++, { held: K, trig: L.left, prof: ALL, a: A(T.LIGHT, 2) });
+    }
+  }
   ["media", "editing", "windows"].slice(0, L.profiles).forEach((w, p) => applyPreset(m, p, w));
   return m;
 }
@@ -982,7 +1062,7 @@ const PRESETS = [
   ["mouse", "Mouse buttons"], ["gamepad", "Gamepad with knob axis"], ["empty", "Empty"],
 ];
 function applyPreset(m, p, which) {
-  const L = m.L, k = L.keys.map(x => x.i), set = (i, a) => { if (i !== undefined) m.setAction(p, i, a); };
+  const L = m.L, k = L.keys.map(x => x.i), set = (i, a) => { if (i !== undefined && i >= 0 && i < L.inputs) m.setAction(p, i, a); };
   const colors = { media: "#00aaff", editing: "#ff8c00", windows: "#00e0b0", "windows-press": "#00e0b0", mouse: "#dc00ff", gamepad: "#36d03a", empty: m.color(p) };
   for (let i = 0; i < L.inputs; i++) m.setAction(p, i, A(T.NONE));
   m.cs = m.cs.filter(c => c.prof !== p);                    // a preset replaces the whole profile
@@ -990,9 +1070,11 @@ function applyPreset(m, p, which) {
   m.setColor(p, colors[which]); m.setEffect(p, 1);
   if (which === "media") {
     set(k[0], A(T.MEDIA, 0xB6)); set(k[1], A(T.MEDIA, 0xCD)); set(k[2], A(T.MEDIA, 0xB5));
+    set(k[3], A(T.MEDIA, 0xEA)); set(k[4], A(T.MEDIA, 0xE2)); set(k[5], A(T.MEDIA, 0xE9));
     set(L.knob, A(T.MEDIA, 0xE2)); set(L.right, A(T.MEDIA, 0xE9)); set(L.left, A(T.MEDIA, 0xEA));
   } else if (which === "editing") {
     set(k[0], A(T.KEY, 1, 0x06)); set(k[1], A(T.KEY, 1, 0x19)); set(k[2], A(T.KEY, 1, 0x1D));
+    set(k[3], A(T.KEY, 1, 0x1B)); set(k[4], A(T.KEY, 1, 0x04)); set(k[5], A(T.KEY, 1, 0x1C));
     set(L.knob, A(T.KEY, 0, 0x28)); set(L.right, A(T.SCROLL, 0xFF, 0)); set(L.left, A(T.SCROLL, 1, 0));
   } else if (which === "windows" || which === "windows-press") {
     set(k[0], A(T.KEY, 8, 0x07)); set(k[1], A(T.KEY, 8, 0x08)); set(k[2], A(T.KEY, 8 | 2, 0x16));
@@ -1002,7 +1084,7 @@ function applyPreset(m, p, which) {
     } else {
       // press: Alt+Tab with Alt held (the switcher opens at once); hold + turn: next / previous window
       set(L.knob, A(T.KEY_HOLD, 4, 0x2B)); set(L.right, A(T.KEY, 1, 0x2B)); set(L.left, A(T.KEY, 1 | 2, 0x2B));
-      combo(L.knob, L.right, A(T.KEY, 0, 0x2B)); combo(L.knob, L.left, A(T.KEY, 2, 0x2B));
+      if (L.turns && L.knob < L.buttons) { combo(L.knob, L.right, A(T.KEY, 0, 0x2B)); combo(L.knob, L.left, A(T.KEY, 2, 0x2B)); }
     }
   } else if (which === "mouse") {
     set(k[0], A(T.MOUSE, 1)); set(k[1], A(T.MOUSE, 4)); set(k[2], A(T.MOUSE, 2));
@@ -1269,7 +1351,7 @@ function renderProfiles() {
 // ---------------------------------------------------------------- device drawing
 function renderDevice(px = "") {
   const d = $(px + "device"); d.replaceChildren();
-  const keys = h("div", { class: "keys" });
+  const keys = h("div", { class: "keys", style: `grid-template-columns: repeat(${L.cols}, auto)` });
   for (const k of L.keys) {
     const a = model.action(prof, k.i), long = model.findCombo(k.i, k.i, prof);
     const selected = !px && sel.kind === "input" && sel.i === k.i;
@@ -1282,18 +1364,19 @@ function renderDevice(px = "") {
       h("span", { class: "ctl-name", text: `Key ${k.n}` })));
   }
   d.append(keys);
-  if (L.knob < L.buttons) {
+  if (L.hasKnob) {
     const axis = model.action(prof, L.right).t === T.AXIS;
     const selected = !px && sel.kind === "input" && (sel.i === L.knob || sel.i === L.right || sel.i === L.left);
     const legend = h("div", { class: "knob-legend" },
-      axis ? [h("b", { text: "Turn" }), h("span", { text: describe(model.action(prof, L.right), true) })]
-           : [h("b", { text: "Right" }), h("span", { text: describe(model.action(prof, L.right), true) }),
-              h("b", { text: "Left" }), h("span", { text: describe(model.action(prof, L.left), true) })],
-      h("b", { text: "Press" }), h("span", { text: describe(model.action(prof, L.knob), true) }));
+      !L.turns ? null
+        : axis ? [h("b", { text: "Turn" }), h("span", { text: describe(model.action(prof, L.right), true) })]
+        : [h("b", { text: "Right" }), h("span", { text: describe(model.action(prof, L.right), true) }),
+           h("b", { text: "Left" }), h("span", { text: describe(model.action(prof, L.left), true) })],
+      L.knob < L.buttons ? [h("b", { text: "Press" }), h("span", { text: describe(model.action(prof, L.knob), true) })] : null);
     d.append(h("div", { class: "knob-wrap", "data-selected": selected ? "true" : "false" },
       h("div", { class: "knob-holder" },                      // the ring follows the knob, not the legend
         h("span", { class: "sel-ring" }),
-        h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob }) },
+        h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob < L.buttons ? L.knob : L.right }) },
           h("span", { class: "knob-top", id: px + "knobTop" }))),
       legend));
   }
@@ -1336,17 +1419,19 @@ function paintLeds() {
   const e = model.effect(prof), c = model.color(prof), bright = model.b[S.BRIGHT] / 255;
   const t = performance.now() / 1000, speed = model.b[S.SPEED];
   const ax = model.action(prof, L.right);
-  L.keys.forEach((k, n) => {
+  L.keys.forEach(k => {
     const g = $((tab === "lighting" ? "l-" : "") + "glow" + k.i); if (!g) return;
+    const n = k.i, side = 2 * n + 1 - L.leds;              // LED n is under button n; <0 left half
     let color = c, a = 0;
-    if (e === 1) a = 1;
+    if (n >= L.leds) a = 0;
+    else if (e === 1) a = 1;
     else if (e === 2) a = 0.15 + 0.85 * (0.5 - 0.5 * Math.cos(t * speed * 0.6));
     else if (e === 3) { color = `hsl(${(t * speed * 9 + n * 60) % 360} 100% 50%)`; a = 1; }
     else if (e === 4) { if (live.btn & 1 << k.i) pressGlow[k.i] = 1; a = pressGlow[k.i] || 0; pressGlow[k.i] = Math.max(0, a - 0.04); }
     else if (e === 5) {
-      if (ax.t === T.AXIS && L.keys.length >= 3) {
+      if (ax.t === T.AXIS && L.leds >= 3) {
         const range = Math.max(1, ax.p2), v = dev ? Math.max(-range, Math.min(range, live.pos)) : 0;
-        a = n === 1 ? (v === 0 ? 1 : 0.16) : n === 0 ? (v < 0 ? -v / range : 0) : n === 2 ? (v > 0 ? v / range : 0) : 0.16;
+        a = side === 0 ? (v === 0 ? 1 : 0.16) : side < 0 ? (v < 0 ? -v / range : 0) : (v > 0 ? v / range : 0);
       } else a = 1;
     }
     g.style.setProperty("--led", color);
@@ -1781,10 +1866,140 @@ function renderSettings() {
   const usb = ["Keyboard and mouse", "Keyboard, mouse and gamepad"][L.usb] || "?";
   $("fwInfo").replaceChildren(
     h("dt", { text: "Firmware" }), h("dd", { text: dev ? `Wildpad ${L.fw}` : "Not connected (demo)" }),
-    h("dt", { text: "Board" }), h("dd", { text: `${L.keys.length} keys and a knob, ${L.leds} lights` }),
+    h("dt", { text: "Board" }), h("dd", { text: `${L.boardName}, ${L.leds} light${L.leds === 1 ? "" : "s"}` }),
     h("dt", { text: "Shows up as" }), h("dd", { text: dev ? usb : "—" }),
     h("dt", { text: "Memory" }), h("dd", { text: `${model.np} of ${L.profiles} profiles in use; ${model.recSize()} bytes for combos and steps, ${model.usedBytes()} used` }));
   $("bootBtn").disabled = !dev;
+  renderBoard();
+}
+
+// ---------------------------------------------------------------- board choice
+let boardOpen = false, boardChoice = null, wiz = null;
+const SKIP_PINS = new Set([8, 9, 12, 14, 15]);          // knob phases, light chain, USB
+
+function miniBoard(keys, cols, knob) {
+  return h("div", { class: "mini", "aria-hidden": "true" },
+    h("div", { class: "mini-keys", style: `grid-template-columns: repeat(${cols}, 14px)` }, Array.from({ length: keys }, () => h("i"))),
+    knob ? h("span", { class: "mini-knob" }) : null);
+}
+
+function renderBoard() {
+  $("boardName").textContent = L.boardName;
+  $("boardChange").textContent = boardOpen ? "Close" : "Change board";
+  $("boardPick").classList.toggle("hidden", !boardOpen);
+  if (!boardOpen) return;
+  const list = $("boardList");
+  list.replaceChildren(...Object.entries(BOARDS).map(([id, bd]) => {
+    const keys = (bd.map[0] & 15) - 1;
+    return h("button", { class: "board-card", "aria-pressed": boardChoice === +id || (boardChoice === null && L.board === +id) ? "true" : "false",
+      onclick: () => { stopWizard(); boardChoice = +id; renderBoard(); } },
+      miniBoard(keys, keys <= 4 ? keys : Math.ceil(keys / 2), true), h("span", { text: bd.name }));
+  }), h("button", { class: "board-card", "aria-pressed": wiz ? "true" : "false", disabled: !dev,
+      title: dev ? null : "Connect the pad first", onclick: startWizard },
+    h("div", { class: "mini-q", text: "?" }), h("span", { text: dev ? "Another pad: find its keys" : "Another pad (connect it first)" })));
+  const ask = boardChoice !== null && boardChoice !== L.board;
+  $("boardConfirm").classList.toggle("hidden", !ask);
+  if (ask) $("boardConfirmText").textContent = `Start over with factory settings for ${BOARDS[boardChoice].name}?`;
+  renderWizard();
+}
+
+async function applyBoard(id, map = []) {
+  if (!dev) {                                             // demo: just show it
+    L = new Layout(id ? boardInfo(id) : boardInfo(0, map));
+    model = factory(L); prof = 0; sel = { kind: "input", i: L.keys[0]?.i ?? 0 };
+    undoStack = []; redoStack = [];
+    boardOpen = false; boardChoice = null; render();
+    return;
+  }
+  try {
+    clearTimeout(pushTimer); clearTimeout(saveTimer);
+    const r = await command(CMD.BOARD, id, map);
+    await command(CMD.SAVE);
+    undoStack = []; redoStack = [];
+    boardOpen = false; boardChoice = null; stopWizard();
+    if (r[0]) {
+      reconnecting = true; toast("Board set. The pad reconnects…");
+      await command(CMD.REBOOT, 0, [], false).catch(() => {});
+    } else {
+      await attach(dev);
+      toast("Board set, with factory settings for it");
+    }
+  } catch (e) { fail(e); }
+}
+
+// Find a board's keys: press them in order, then the knob
+function startWizard() {
+  if (!dev) return;
+  boardChoice = null;
+  wiz = { step: "keys", pins: [], knob: null, base: null, up: null, leds: null, rev: false, timer: null };
+  renderBoard();
+  wizPoll();
+}
+function stopWizard() { if (wiz) clearTimeout(wiz.timer); wiz = null; }
+
+async function wizPoll() {
+  const w = wiz;
+  if (!w || !dev) return;
+  try {
+    const st = await command(CMD.STATUS);
+    const low = [];
+    for (let k = 0; k < 16; k++) if (!SKIP_PINS.has(k) && !((k < 8 ? st[5] >> k : st[6] >> (k - 8)) & 1)) low.push(k);
+    if (!w.base) w.base = new Set(low);                     // pins that are low anyway
+    if (w.up !== null) { if (!low.includes(w.up)) w.up = null; }
+    else if (w.step === "keys" || w.step === "knob") {
+      const k = low.find(k => !w.base.has(k) && !w.pins.includes(k));
+      if (k !== undefined) {
+        w.up = k;
+        if (w.step === "keys") { w.pins.push(k); if (w.pins.length === 7) w.step = "knob"; }
+        else { w.knob = k; w.step = "leds"; }
+        renderWizard();
+      }
+    }
+  } catch (e) { stopWizard(); fail(e); renderBoard(); return; }
+  if (wiz === w && w.step !== "leds") w.timer = setTimeout(wizPoll, 40);
+}
+
+function wizardMap() {
+  const w = wiz, pins = w.knob === null ? w.pins : [...w.pins, w.knob];
+  const leds = w.leds ?? w.pins.length;
+  const map = [pins.length | (w.knob === null ? NO_KNOB : pins.length - 1) << 4,
+    leds | (w.rev ? MAP_LED_REVERSED : 0) | (w.knob === null && w.noKnob ? MAP_NO_KNOB : 0), ...pins];
+  while (map.length < MAP_LEN) map.push(0xFF);
+  const known = Object.entries(BOARDS).find(([, bd]) => bd.map.every((v, i) => v === map[i]) && map.slice(bd.map.length).every(v => v === 0xFF));
+  return known ? { id: +known[0], map: [] } : { id: 0, map };
+}
+
+function renderWizard() {
+  const box = $("boardWizard"), w = wiz;
+  box.classList.toggle("hidden", !w);
+  if (!w) return;
+  const found = h("div", { class: "wiz-found" },
+    w.pins.map((k, n) => h("span", { text: `Key ${n + 1}: ${pinName(k)}` })),
+    w.knob !== null ? h("span", { text: `Knob: ${pinName(w.knob)}` }) : null);
+  const cancel = h("button", { class: "btn", text: "Cancel", onclick: () => { stopWizard(); renderBoard(); } });
+  if (w.step === "keys") {
+    box.replaceChildren(h("h3", { text: w.pins.length ? `Now key ${w.pins.length + 1}` : "Press key 1" }),
+      h("p", { text: "Press the keys one at a time: the top row from left to right, then the next row. Don't press the knob yet." }),
+      found, h("div", { class: "row" },
+        h("button", { class: "btn primary", text: "That's all the keys", disabled: !w.pins.length, onclick: () => { w.step = "knob"; renderWizard(); } }), cancel));
+  } else if (w.step === "knob") {
+    box.replaceChildren(h("h3", { text: "Press the knob" }),
+      h("p", { text: "Push the knob down like a button." }), found,
+      h("div", { class: "row" },
+        h("button", { class: "btn", text: "It has a knob, but it doesn't press", onclick: () => { w.step = "leds"; renderWizard(); } }),
+        h("button", { class: "btn", text: "There is no knob", onclick: () => { w.noKnob = true; w.step = "leds"; renderWizard(); } }), cancel));
+  } else {
+    const n = w.leds ?? w.pins.length;
+    box.replaceChildren(h("h3", { text: "Lights" }),
+      h("p", { text: "How many keys have a light under them? Usually all of them." }), found,
+      h("div", { class: "seg", style: "margin-bottom:10px" }, Array.from({ length: 9 }, (_, k) =>
+        h("button", { "aria-pressed": k === n ? "true" : "false", text: String(k), onclick: () => { w.leds = k; renderWizard(); } }))),
+      h("label", { class: "row", style: "margin-bottom:12px" },
+        h("span", { class: "switch" }, h("input", { type: "checkbox", checked: w.rev, onchange: e => { w.rev = e.target.checked; } }), h("span")),
+        h("span", { text: "The lights run from the last key to the first (turn on if the wrong key lights up when pressed)" })),
+      h("div", { class: "row" },
+        h("button", { class: "btn primary", text: "Use this board", onclick: () => { const r = wizardMap(); applyBoard(r.id, r.map); } }), cancel));
+  }
 }
 
 function bindSettings() {
@@ -1794,6 +2009,9 @@ function bindSettings() {
   num("optDetents", S.DETENTS); num("optHold", S.HOLD); num("optTap", S.TAP); num("optDebounce", S.DEBOUNCE); num("optTurnHold", S.TURN_HOLD);
   num("brightness", S.BRIGHT); num("speed", S.SPEED);
   $("optStart").addEventListener("change", e => change(m => { m.b[S.START] = +e.target.value; }, "start"));
+  $("boardChange").addEventListener("click", () => { boardOpen = !boardOpen; boardChoice = null; stopWizard(); renderBoard(); });
+  $("boardNo").addEventListener("click", () => { boardChoice = null; renderBoard(); });
+  $("boardYes").addEventListener("click", () => applyBoard(boardChoice));
 }
 
 // =============================================================================== wiring
@@ -1829,7 +2047,7 @@ $("factoryBtn").addEventListener("click", () => $("factoryConfirm").classList.re
 $("factoryNo").addEventListener("click", () => $("factoryConfirm").classList.add("hidden"));
 $("factoryYes").addEventListener("click", () => {
   $("factoryConfirm").classList.add("hidden");
-  change(m => m.load(factory(L).bytes()), "factory");
+  change(m => m.load(factory(L, m).bytes()), "factory");
   toast("Factory settings restored");
 });
 $("bootBtn").addEventListener("click", async () => {

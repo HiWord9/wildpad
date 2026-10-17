@@ -4,10 +4,10 @@
 “keys + knob” macropads: every knob click counts, every control does what you want.
 
 
-These little macropads are sold under dozens of brand names with the same PCB: three
-mechanical keys, a clickable rotary knob, three RGB LEDs and a WCH CH552G
-microcontroller (stock USB ID `1189:8890`, configured with an app called
-“MINI KeyBoard”). The stock firmware loses most knob clicks as soon as you turn it with
+These little macropads are sold under dozens of brand names: three or six mechanical
+keys, a clickable rotary knob, RGB LEDs and a WCH CH552 microcontroller (stock USB ID
+`1189:8890`, configured with an app called “MINI KeyBoard”). One Wildpad firmware runs
+all of them, and a pad it doesn't know yet is set up by pressing its keys once. The stock firmware loses most knob clicks as soon as you turn it with
 any speed, and its app can only assign a key per button. Wildpad replaces both.
 
 ## What you get
@@ -150,11 +150,13 @@ out: knob decoding (slow, fast, bounce, reversals), every click becoming exactly
 press and release, combos with keys and the knob, long press, profile switching and
 the gamepad axis. `build.py` works around a packaging bug of SDCC 4.5 on Windows.
 
-## Other boards
+## Boards
 
-Everything board specific is in [firmware/src/config.h](firmware/src/config.h); the
-settings layout adapts to the number of keys and the setup page reads it from the
-pad. See [docs/porting.md](docs/porting.md).
+Known boards: 3 keys + knob, 6 keys + knob, and a 6-key variant wired in reverse. The
+board is a setting (*Settings → Board* on the setup page, or `wildpad.py board`). For
+any other CH552 pad, *Another pad: find its keys* asks you to press the keys in order
+and stores their pins. The memory for actions follows the number of keys: the 6-key
+pad fits 2 profiles, the 3-key pad 3. See [docs/porting.md](docs/porting.md).
 
 ## How it works
 
