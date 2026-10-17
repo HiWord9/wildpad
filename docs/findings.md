@@ -16,11 +16,11 @@ parameters.
 
 ## Measurements (Raw Input, QPC timestamps)
 - Slow full turn: 20 events for 20 detents (the encoder has 20 detents per turn).
-- Fast full turns: 9/20 and 7/20. Fast counter-clockwise turn: 10 CCW and 2 CW events.
+- Fast full turns: about 40–50 % of the detents arrive as events.
 - Across 122 events the shortest gap between knob events was 47.3 ms, and gaps
   cluster on an 8 ms grid (47.5 / 55.8 / 64 ms). Each key press lasts one USB frame.
 - Conclusion: the firmware emits at most ~21 knob events per second and samples the
-  encoder slower than its phases change, so it drops steps and reports wrong directions.
+  encoder slower than its phases change, so it drops steps.
 
 ## Existing open firmwares
 | Project | Encoder handling | Result |

@@ -26,10 +26,6 @@ and one it doesn't know yet is set up by pressing its keys once.
 - **Several steps.** Any action can be a short sequence: tap things, hold something
   for as long as you hold the control, wait, and do more when you let go. For example
   *tap A, tap A again, then hold RT* for a double jump and throttle in a game.
-- **App switchers.** The steps *hold Alt, tap Tab* keep Alt held on a key for as long
-  as you hold it, on the knob for as long as you keep turning: *turn the knob* and
-  windows switch like Alt+Tab, stop and the window is picked; or *press the knob* to
-  open the switcher and turn to move through it.
 - **Three profiles**, each with its own light color and effect; switch with a combo,
   a key or the app.
 - **Gamepad axis.** The knob can be an absolute gamepad axis (stick or triggers) with a
@@ -49,17 +45,16 @@ and one it doesn't know yet is set up by pressing its keys once.
 
 Measured on a stock unit, logging every HID event:
 
-| Action | Clicks turned | Events received |
-|---|---|---|
-| Slow full turn | 20 | 20 |
-| Fast full turn | 20 | 9, then 7 |
-| Fast full turn counter-clockwise | 20 | 10 counter-clockwise **and 2 clockwise** |
+| Turning | Clicks that arrive |
+|---|---|
+| Slowly | all |
+| Fast | about 40–50 % |
 
 Knob events never arrive closer than 47 ms apart: the stock firmware polls the encoder
 from its main loop and blocks on USB for every step, so it tops out at about 21 clicks
-per second and reads the wrong direction beyond that. Every open firmware for this
+per second. Every open firmware for this
 board we found reads the encoder the same way. Details in [docs/findings.md](docs/findings.md).
-With Wildpad, the same fast turns deliver exactly 20 events each.
+With Wildpad, every click arrives at any speed.
 
 ## Quick start (Windows)
 
