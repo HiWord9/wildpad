@@ -5,40 +5,53 @@
 // of the configuration protocol (docs/protocol.md). Keep tools/wildpad.py and
 // tools/configurator.html in sync when changing it, and bump SETTINGS_VERSION.
 //
-// Inputs are numbered: buttons 0 .. BOARD_BUTTONS-1, then knob right, knob left.
-// Every profile maps each input to one action. After the profiles comes a packed
-// list of records, shared by everything that needs more room:
+// Inputs are numbered: buttons 0 .. nButtons-1, then knob right, knob left (boards
+// with a knob). Every profile maps each input to one action. After the profiles comes
+// a packed list of records, shared by everything that needs more room:
 //  - combos: "while input H is held, input T does action A" (H == T: long press of
 //    H), for one profile or all of them;
 //  - sequences: lists of steps (tap an action, hold it while the input is held, wait,
 //    and steps that run when the input is let go), used through ACT_SEQ.
+//
+// One firmware runs every supported board. The header names the board: a known one
+// from the BOARDS table in settings.c (one byte), or 0 for a board described by a pin
+// map stored right after the header. The profile size, and so how many profiles fit,
+// follow from the board's number of inputs.
 
 #pragma once
 #include <stdint.h>
 #include "config.h"
 
 #define SETTINGS_MAGIC      0xA5
-#define SETTINGS_VERSION    4
+#define SETTINGS_VERSION    5
 #define SETTINGS_SIZE       128
 
-#define N_INPUTS            (BOARD_BUTTONS + 2)
-#define IN_RIGHT            BOARD_BUTTONS           // knob turned clockwise
-#define IN_LEFT             (BOARD_BUTTONS + 1)     // knob turned counter-clockwise
-
+#define MAX_BUTTONS         8
+#define MAX_LEDS            8
+#define MAX_PROFILES        3
 #define PROFILE_HEAD        4                       // r, g, b, light effect
-#define PROFILE_SIZE        (PROFILE_HEAD + 3 * N_INPUTS)
-#define PROFILES_OFFSET     12
-#define RECORDS_AT(n)       (PROFILES_OFFSET + (n) * PROFILE_SIZE)   // records after n profiles
-#define RECORDS_OFFSET      RECORDS_AT(N_PROFILES)                   // ... with all profiles in use
+#define HEADER_SIZE         13
 #define RECORDS_END         (SETTINGS_SIZE - 1)
 
-#if PROFILES_OFFSET + 3 * PROFILE_SIZE + 32 <= SETTINGS_SIZE - 1
-  #define N_PROFILES        3
-#elif PROFILES_OFFSET + 2 * PROFILE_SIZE + 24 <= SETTINGS_SIZE - 1
-  #define N_PROFILES        2
-#else
-  #define N_PROFILES        1
-#endif
+// Board map (BOARD_MAP_LEN bytes, in the BOARDS table or at S_MAP):
+//  [0]     buttons (keys + knob switch, 1..8) | index of the knob switch << 4 (15: none)
+//  [1]     LEDs (0..8) | MAP_LED_REVERSED | MAP_NO_KNOB
+//  [2..9]  pin of button i: P1.x = x, P3.x = 8 + x (pressed = low)
+// The WS2812 chain is on P3.4 and the knob phases on P3.1 (A) and P3.0 (B).
+#define BOARD_MAP_LEN       10
+#define MAP_LED_REVERSED    0x10        // chain runs from the last key to the first
+#define MAP_NO_KNOB         0x20        // no rotary encoder
+#define NO_KNOB_BUTTON      15
+#define N_BOARDS            3
+#define DEFAULT_BOARD       1
+
+// Layout of the settings last checked by SET_layout() / SET_valid()
+extern uint8_t boardId, nButtons, knobBtn, nLeds, nInputs, profOff, profSize, maxProf;
+extern __xdata uint8_t boardMap[BOARD_MAP_LEN];
+extern __bit hasKnob, ledReversed;
+#define IN_RIGHT            nButtons                // knob turned clockwise
+#define IN_LEFT             (nButtons + 1)          // knob turned counter-clockwise
+#define RECORDS_AT(n)       (profOff + (n) * profSize)   // records after n profiles
 
 // Header bytes
 #define S_MAGIC             0
@@ -54,8 +67,10 @@
 #define S_TURN_HOLD         10          // what a knob turn holds (ACT_KEY_HOLD modifiers, held
                                         // sequence steps) is let go this long after the last
                                         // click, 100 ms units (0 = 800 ms)
-#define S_PROFILES          11          // profiles in use, 1..N_PROFILES (0 = all); the room of
+#define S_PROFILES          11          // profiles in use, 1..maxProf (0 = all); the room of
                                         // unused profiles goes to combos and sequences
+#define S_BOARD             12          // 1..N_BOARDS: known board; 0: pin map at S_MAP
+#define S_MAP               13
 #define S_CHECKSUM          (SETTINGS_SIZE - 1)
 
 // S_FLAGS
@@ -155,7 +170,7 @@ typedef struct {
 extern __xdata uint8_t cfg[SETTINGS_SIZE];
 
 #define CFG_FLAGS           cfg[S_FLAGS]
-#define PROFILE(p)          (cfg + PROFILES_OFFSET + (p) * PROFILE_SIZE)
+#define PROFILE(p)          (cfg + profOff + (p) * profSize)
 #define ACTION(p, i)        ((__xdata action_t*)(PROFILE(p) + PROFILE_HEAD + 3 * (i)))
 
 
@@ -163,6 +178,7 @@ void SET_defaults(__xdata uint8_t* dst);
 void SET_load(void);
 void SET_save(void);
 uint8_t SET_checksum(__xdata uint8_t* p);
-uint8_t SET_valid(__xdata uint8_t* p);
+uint8_t SET_layout(__xdata uint8_t* p);   // board and memory layout of p, 0 if bad
+uint8_t SET_valid(__xdata uint8_t* p);    // also sets the layout of p
 extern __xdata uint8_t SET_padUsed;       // set by SET_valid() / SET_defaults()
 void SET_saveByte(uint8_t idx, uint8_t val);

@@ -28,6 +28,7 @@ static __code uint8_t SEQ[] = {
 void SET_load(void) {
   uint8_t i;
   __xdata action_t* a;
+  cfg[S_BOARD] = DEFAULT_BOARD; SET_layout(cfg);
   SET_defaults(cfg);
   a = ACTION(0, 0);
   a->type = ACT_SEQ;

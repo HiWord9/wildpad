@@ -15,7 +15,7 @@
 //  - the gamepad interface is added automatically when a profile uses it
 //  - configuration over a vendor HID feature report, stored in Data-Flash
 //
-// Plug in holding button BOARD_BOOT_BUTTON -> USB bootloader
+// Plug in holding key 1 (button BOOT_BUTTON) -> USB bootloader
 
 #include "ch554.h"
 #include "config.h"
@@ -31,6 +31,7 @@
 #define KEEP_CLEAN_START  0x5A            // RESET_KEEP markers, see main()
 #define KEEP_BOOTLOADER   0xB0
 #define NO_INPUT        0x0F
+#define BOOT_BUTTON     0                 // held at plug-in -> bootloader
 
 // ===================================================================================
 // Shared state
@@ -65,7 +66,9 @@ static void applySettings(void) {
   INP_setInvert(CFG_FLAGS & FLAG_INVERT);
   INP_setHalfstep(CFG_FLAGS & FLAG_HALFSTEP);
   INP_setDebounce(cfg[S_DEBOUNCE_MS]);
-  nProf = cfg[S_PROFILES] ? cfg[S_PROFILES] : N_PROFILES;
+  SET_layout(cfg);
+  INP_setPins(boardMap + 2, nButtons);
+  nProf = cfg[S_PROFILES] ? cfg[S_PROFILES] : maxProf;
   recOff = RECORDS_AT(nProf);
   if(prof >= nProf) prof = 0;
 }
@@ -315,19 +318,19 @@ static void oneShot(__xdata action_t* a) {
 #define LED_TICK_MS     20
 #define PROFILE_FLASH   400
 
-static __xdata uint8_t ledV[NEO_COUNT];   // press levels for the "light on press" effect
-static __xdata uint8_t rgb[NEO_COUNT * 3];
+static __xdata uint8_t ledV[MAX_LEDS];    // press levels for the "light on press" effect
+static __xdata uint8_t rgb[MAX_LEDS * 3];
 static __xdata uint16_t ledTime;
 static __xdata uint16_t ledPhase;
 static __xdata uint16_t hueAcc;                   // rainbow hue << 8
 
 static void LED_flash(uint8_t i) {
-  if(i < NEO_COUNT) ledV[i] = 255;
+  if(i < nLeds) ledV[i] = 255;
 }
 
 static void LED_flashAll(void) {
   uint8_t i;
-  for(i = 0; i < NEO_COUNT; i++) ledV[i] = 255;
+  for(i = 0; i < nLeds; i++) ledV[i] = 255;
 }
 
 static uint8_t mul8(uint8_t a, uint8_t b) {
@@ -364,12 +367,12 @@ static void LED_task(void) {
   if(profTime && (uint16_t)(now - profTime) < PROFILE_FLASH) effect = LED_SOLID;   // new profile
   else if(!ledOn) effect = LED_OFF;
   else if(effect == LED_STEERING) {
-    if(axisMode() && NEO_COUNT >= 3)                           // outer LEDs grow with the axis
+    if(axisMode() && nLeds >= 3)                               // outer LEDs grow with the axis
       side = (uint16_t)(rel < 0 ? -rel : rel) * 255 / (lastRange ? lastRange : 1);
     else effect = LED_SOLID;
   }
 
-  for(i = 0, o = rgb; i < NEO_COUNT; i++, o += 3) {
+  for(i = 0, o = rgb; i < nLeds; i++, o += 3) {
     colR = p[0]; colG = p[1]; colB = p[2];
     switch(effect) {
       case LED_OFF:     lvl = 0; break;
@@ -380,10 +383,11 @@ static void LED_task(void) {
         LED_hue(lvl >= 192 ? lvl - 192 : lvl);
         lvl = 255;
         break;
-      case LED_STEERING:                                       // the middle one marks the center
-        if(i == 0)      lvl = rel < 0 ? side : 0;
-        else if(i == 2) lvl = rel > 0 ? side : 0;
-        else            lvl = (i == 1 && rel == 0) ? 255 : 40;
+      case LED_STEERING:                                       // first half left, second half
+        tri = 2 * i + 1;                                       // right, a middle one the center
+        if(tri < nLeds)      lvl = rel < 0 ? side : 0;
+        else if(tri > nLeds) lvl = rel > 0 ? side : 0;
+        else                 lvl = rel == 0 ? 255 : 40;
         break;
       default:          lvl = 255; break;                      // solid
     }
@@ -394,10 +398,11 @@ static void LED_task(void) {
   }
 
   EA = 0;                                                      // WS2812 timing is strict
-  for(i = 0, o = rgb; i < NEO_COUNT; i++, o += 3) NEO_writeColor(o[0], o[1], o[2]);
+  if(ledReversed) for(i = nLeds, o = rgb + 3 * nLeds; i; i--) { o -= 3; NEO_writeColor(o[0], o[1], o[2]); }
+  else for(i = nLeds, o = rgb; i; i--, o += 3) NEO_writeColor(o[0], o[1], o[2]);
   EA = 1;
 
-  for(i = 0; i < NEO_COUNT; i++) {                             // fade press highlights
+  for(i = 0; i < nLeds; i++) {                                 // fade press highlights
     lvl = ledV[i];
     if(btn & BTN_BIT(i)) continue;                             // stay lit while held
     ledV[i] = lvl > 24 ? lvl - (lvl >> 3) : 0;
@@ -422,7 +427,7 @@ static void addHeld(uint8_t owner, __xdata action_t* a) {
     if(heldOwner[i]) continue;
     heldOwner[i] = owner + 1;
     copyAction(&held[i], a);
-    if(owner >= BOARD_BUTTONS) turnHeld = 1;
+    if(owner >= nButtons) turnHeld = 1;
     return;
   }
 }
@@ -450,12 +455,12 @@ static void releaseTurns(void) {
 #define BS_PENDING  1                     // starts combos / has a long press: wait
 #define BS_HELD     2                     // its actions are held until release
 #define BS_USED     3                     // was used for a combo: nothing on release
-static __xdata uint8_t  bstate[BOARD_BUTTONS];
-static __xdata uint16_t btime[BOARD_BUTTONS];
-static __xdata uint8_t  btnSeq[BOARD_BUTTONS];    // sequence id + 1 started by the press
+static __xdata uint8_t  bstate[MAX_BUTTONS];
+static __xdata uint16_t btime[MAX_BUTTONS];
+static __xdata uint8_t  btnSeq[MAX_BUTTONS];      // sequence id + 1 started by the press
 
 static __bit ownerActive(uint8_t owner) {
-  if(owner < BOARD_BUTTONS) return (btn & BTN_BIT(owner)) && bstate[owner] != BS_IDLE;
+  if(owner < nButtons) return (btn & BTN_BIT(owner)) && bstate[owner] != BS_IDLE;
   return owner != NO_OWNER;                         // knob: until it stops
 }
 
@@ -589,7 +594,7 @@ static void RUN_task(void) {
 static __xdata action_t* heldCombo(uint8_t trig) {
   uint8_t h;
   __xdata action_t* a;
-  for(h = 0; h < BOARD_BUTTONS; h++) {
+  for(h = 0; h < nButtons; h++) {
     if(h == trig || !(btn & BTN_BIT(h)) || bstate[h] == BS_IDLE) continue;
     a = findCombo(h, trig);
     if(a) {
@@ -655,12 +660,12 @@ static void BTN_task(void) {
   uint8_t i, bit;
   __xdata action_t* a;
 
-  for(i = 0, bit = 1; i < BOARD_BUTTONS; i++, bit <<= 1) {
+  for(i = 0, bit = 1; i < nButtons; i++, bit <<= 1) {
     switch(bstate[i]) {
       case BS_IDLE:
         if((btn & bit) && !(handled & bit)) {                  // new press
           handled |= bit;
-          if(i == BOARD_KNOB_BUTTON) LED_flashAll();
+          if(i == knobBtn) LED_flashAll();
           else LED_flash(i);
           a = heldCombo(i);
           if(a) startAction(i, a);
@@ -701,14 +706,15 @@ static void BTN_task(void) {
 static void KNOB_collect(void) {
   int8_t dir;
   uint8_t trig, h, entry;
+  if(!hasKnob) { knobSeen = pos; return; }               // its pins may be keys
   while(pos != knobSeen) {
     dir = (int16_t)(pos - knobSeen) > 0 ? 1 : -1;
     knobSeen += dir;
     trig = dir > 0 ? IN_RIGHT : IN_LEFT;
-    LED_flash(dir > 0 ? NEO_COUNT - 1 : 0);
+    LED_flash(dir > 0 ? nLeds - 1 : 0);
 
     entry = NO_INPUT;
-    for(h = 0; h < BOARD_BUTTONS; h++) {                       // a held key with a combo?
+    for(h = 0; h < nButtons; h++) {                            // a held key with a combo?
       if(!(btn & BTN_BIT(h)) || bstate[h] == BS_IDLE) continue;
       if(findCombo(h, trig)) {
         if(bstate[h] == BS_PENDING) bstate[h] = BS_USED;
@@ -853,6 +859,7 @@ static void STATUS_task(void) {
 #define CMD_BOOTLOADER  10
 #define CMD_PROFILE     11
 #define CMD_INJECT      12                // test aid: offset = buttons held, length = int8 knob clicks
+#define CMD_BOARD       13                // offset = board (0: pin map in the data), live until SAVE
 
 #define ST_OK           0
 #define ST_BAD_CMD      1
@@ -863,10 +870,11 @@ static void STATUS_task(void) {
 
 static __xdata uint8_t stage[SETTINGS_SIZE];
 
-static __code uint8_t INFO[16] = {
-  FW_MAJOR, FW_MINOR, FW_PATCH, BOARD_ID, BOARD_BUTTONS, BOARD_KNOB_BUTTON, SETTINGS_SIZE,
-  N_PROFILES, 0 /* USB layout */, NEO_COUNT, RECORDS_END - RECORDS_OFFSET /* record bytes */,
-  PROFILES_OFFSET, PROFILE_SIZE, RECORDS_OFFSET, SETTINGS_VERSION, 0 /* active profile */
+static __code uint8_t INFO[17] = {
+  FW_MAJOR, FW_MINOR, FW_PATCH, 0 /* board */, 0 /* buttons */, 0 /* knob button */,
+  SETTINGS_SIZE, 0 /* max profiles */, 0 /* USB layout */, 0 /* LEDs */, 0 /* record bytes */,
+  0 /* profiles offset */, 0 /* profile size */, 0 /* records offset */, SETTINGS_VERSION,
+  0 /* active profile */, 0 /* inputs */
 };
 static __xdata uint8_t persona;
 
@@ -889,8 +897,18 @@ static void CFG_task(void) {
   switch(cmd) {
     case CMD_INFO:
       for(i = 0; i < sizeof(INFO); i++) out[i] = INFO[i];
+      out[3] = boardId;
+      out[4] = nButtons;
+      out[5] = knobBtn;
+      out[7] = maxProf;
       out[8] = persona;
+      out[9] = nLeds;
+      out[13] = RECORDS_AT(maxProf);
+      out[10] = RECORDS_END - out[13];
+      out[11] = profOff;
+      out[12] = profSize;
       out[15] = prof;
+      out[16] = nInputs;
       break;
     case CMD_READ:                                          // from live settings
       if(len > CHUNK_MAX || (uint16_t)off + len > SETTINGS_SIZE) { status = ST_BAD_RANGE; break; }
@@ -901,7 +919,7 @@ static void CFG_task(void) {
       for(i = 0; i < len; i++) stage[off + i] = USB_featureOut[4 + i];
       break;
     case CMD_COMMIT:                                        // staging -> live
-      if(!SET_valid(stage)) { status = ST_BAD_DATA; break; }
+      if(!SET_valid(stage)) { SET_layout(cfg); status = ST_BAD_DATA; break; }
       for(i = 0; i < SETTINGS_SIZE; i++) cfg[i] = stage[i];
       applySettings();
       out[0] = wantedPersona() != persona;                  // reconnect needed
@@ -911,6 +929,11 @@ static void CFG_task(void) {
       brightDirty = 0;
       out[0] = wantedPersona() != persona;
       break;
+    case CMD_BOARD:                                         // new board: its factory settings
+      stage[S_BOARD] = off;
+      for(i = 0; i < BOARD_MAP_LEN; i++) stage[S_MAP + i] = USB_featureOut[4 + i];
+      if(!SET_layout(stage)) { SET_layout(cfg); status = ST_BAD_DATA; break; }
+      // fall through
     case CMD_DEFAULTS:                                      // live only, until SAVE
       SET_defaults(cfg);
       applySettings();
@@ -918,6 +941,8 @@ static void CFG_task(void) {
       break;
     case CMD_STATUS:
       fillStatus(out);
+      out[5] = P1;                                          // raw pins, to find a board's keys
+      out[6] = P3;
       for(i = 0; i < 9; i++) out[8 + i] = kbdRep[i];          // keyboard report being sent
       break;
     case CMD_RECENTER:
@@ -974,7 +999,7 @@ static void enterBootloader(void) {
   uint8_t i;
   RST_keep(KEEP_BOOTLOADER);                                // even a watchdog reset gets there
   EA = 0;
-  for(i = 0; i < NEO_COUNT; i++) NEO_writeColor(80, 80, 80);
+  for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
   EA = 1;
   DLY_ms(50);                                               // let the control transfer finish
   USB_disconnect();
@@ -1023,17 +1048,18 @@ void main(void) {
 #endif
 
   NEO_init();
-  if(BTN_READ() & BTN_BIT(BOARD_BOOT_BUTTON)) {             // held at plug-in: bootloader
-    NEO_latch();
-    for(i = NEO_COUNT * 3; i; i--) NEO_sendByte(127);
-    BOOT_now();
-  }
-
   CLK_config();
   DLY_ms(5);
   SET_load();
   prof = cfg[S_START_PROFILE];
   applySettings();
+
+  btn = handled = INP_readRaw();                            // ignore keys held at boot
+  if(btn & BTN_BIT(BOOT_BUTTON)) {                          // key 1 held at plug-in: bootloader
+    NEO_latch();
+    for(i = nLeds * 3; i; i--) NEO_sendByte(127);
+    BOOT_now();
+  }
 
   persona = wantedPersona();
   hasPad = persona != USB_KEYBOARD;
@@ -1042,7 +1068,6 @@ void main(void) {
   USB_init(persona);
   WDT_start();
 
-  btn = handled = BTN_READ();                               // ignore keys held at boot
   center = knobSeen = pos = INP_position();
   profTime = INP_millis() | 1;                              // show the profile color
 

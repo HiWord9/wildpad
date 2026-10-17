@@ -17,5 +17,8 @@ uint16_t INP_millis(void);        // free running millisecond counter
 void INP_setHalfstep(uint8_t on);
 void INP_setInvert(uint8_t on);
 void INP_setDebounce(uint8_t ms);
+void INP_setPins(__xdata uint8_t* pins, uint8_t n);   // button i on pins[i] (P1.x = x, P3.x = 8 + x)
+uint8_t INP_readRaw(void);        // undebounced buttons; also used by the ISR, so only
+                                  // call it from main() before INP_init()
 
 void INP_ISR(void) __interrupt(INT_NO_TMR2);

@@ -27,6 +27,7 @@ static void put(uint8_t in, uint8_t type, uint8_t p1, uint8_t p2) {
 void SET_load(void) {
   uint8_t i;
   __xdata uint8_t* c;
+  cfg[S_BOARD] = DEFAULT_BOARD; SET_layout(cfg);
   SET_defaults(cfg);
   put(0, ACT_PAD_BTN, PAD_RT, 0);
   put(1, ACT_PAD_BTN, PAD_A, 0);
@@ -34,8 +35,8 @@ void SET_load(void) {
   put(3, ACT_CENTER, 0, 0);
   put(IN_RIGHT, ACT_AXIS, AXIS_LX, 10);
   put(IN_LEFT, ACT_NONE, 0, 0);
-  for(i = RECORDS_OFFSET; i < RECORDS_END; i++) cfg[i] = REC_END;
-  c = cfg + RECORDS_OFFSET;
+  for(i = RECORDS_AT(maxProf); i < RECORDS_END; i++) cfg[i] = REC_END;
+  c = cfg + RECORDS_AT(maxProf);
   c[0] = 0x00; c[1] = ACT_KEY; c[2] = 0; c[3] = 0x06;                  // long key 1: 'c'
   c += 4;
   c[0] = (2 << 4) | IN_RIGHT; c[1] = ACT_KEY; c[2] = 0; c[3] = 0x05;   // key 3 + right: 'b'

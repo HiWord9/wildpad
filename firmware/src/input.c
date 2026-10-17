@@ -5,7 +5,7 @@
 #pragma nooverlay
 #include "input.h"
 #include "config.h"
-#include "gpio.h"
+#include "settings.h"
 
 // Timer2 in 16-bit auto-reload mode, clocked at Fsys/12
 #define TICK_HZ       4000
@@ -26,7 +26,10 @@ static volatile uint8_t  buttons;
 static uint8_t  enc_prev;
 static int8_t   enc_acc;                  // quarter steps since last detent
 static uint8_t  sub;
-static __xdata uint8_t db_cnt[BOARD_BUTTONS];
+static __xdata uint8_t db_cnt[MAX_BUTTONS];
+static __xdata uint8_t pinMask[MAX_BUTTONS];      // bit of button i in its port
+static uint8_t  onP3;                     // bit i: button i is on P3, else on P1
+static uint8_t  nBtn;
 static uint8_t  debounce = 5;
 static __bit    halfstep;
 static __bit    invert;
@@ -61,6 +64,25 @@ uint8_t INP_buttons(void) {
 
 void INP_setDebounce(uint8_t v) { debounce = v ? v : 1; }
 
+void INP_setPins(__xdata uint8_t* pins, uint8_t n) {
+  uint8_t i, bit;
+  ET2 = 0;
+  onP3 = 0;
+  for(i = 0, bit = 1; i < n; i++, bit <<= 1) {
+    pinMask[i] = 1 << (pins[i] & 7);
+    if(pins[i] & 8) onP3 |= bit;
+  }
+  nBtn = n;
+  ET2 = 1;
+}
+
+uint8_t INP_readRaw(void) {
+  uint8_t i, bit, raw = 0, p1 = P1, p3 = P3;
+  for(i = 0, bit = 1; i < nBtn; i++, bit <<= 1)
+    if(!(((onP3 & bit) ? p3 : p1) & pinMask[i])) raw |= bit;   // pressed = low
+  return raw;
+}
+
 void INP_ISR(void) __interrupt(INT_NO_TMR2) {
   uint8_t s, i, raw, bit;
   TF2 = 0;
@@ -84,8 +106,8 @@ void INP_ISR(void) __interrupt(INT_NO_TMR2) {
   if(++sub < TICK_HZ / 1000) return;
   sub = 0;
   ms++;
-  raw = BTN_READ();
-  for(i = 0, bit = 1; i < BOARD_BUTTONS; i++, bit <<= 1) {
+  raw = INP_readRaw();
+  for(i = 0, bit = 1; i < nBtn; i++, bit <<= 1) {
     if((raw ^ buttons) & bit) {
       if(++db_cnt[i] >= debounce) { buttons ^= bit; db_cnt[i] = 0; }
     }

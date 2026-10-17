@@ -19,6 +19,10 @@
   python wildpad.py export my.json               save everything to a file
   python wildpad.py import my.json               load a file (saved on the device)
   python wildpad.py defaults                     factory settings (saved)
+  python wildpad.py board                        which board this is, and the known ones
+  python wildpad.py board 2                      it is board 2 (factory settings for it)
+  python wildpad.py board custom P1.1 P1.7 P1.6 knob:P3.3 leds:3
+                                                a board of your own: key pins in order
   python wildpad.py bootloader                   jump to the USB bootloader
   python wildpad.py actions                      list action and key names
 
@@ -43,16 +47,18 @@ USAGE_PAGE = 0xFF54
 FEATURE_LEN = 40
 CHUNK = 32
 PROTOCOL = 3
-SETTINGS_VERSION = 4
+SETTINGS_VERSION = 5
 
 (CMD_INFO, CMD_READ, CMD_WRITE, CMD_COMMIT, CMD_SAVE, CMD_DEFAULTS, CMD_STATUS,
- CMD_RECENTER, CMD_REBOOT, CMD_BOOTLOADER, CMD_PROFILE) = range(1, 12)
+ CMD_RECENTER, CMD_REBOOT, CMD_BOOTLOADER, CMD_PROFILE, CMD_INJECT, CMD_BOARD) = range(1, 14)
 STATUS_TEXT = {1: "unknown command", 2: "invalid settings", 3: "bad offset/length"}
 USB_LAYOUTS = ["keyboard", "keyboard + gamepad"]
 
 # ----------------------------------------------------------------- settings layout
 S_MAGIC, S_VERSION, S_FLAGS, S_BRIGHTNESS, S_HOLD, S_DEBOUNCE, S_TAP, S_DETENTS, \
-    S_START, S_SPEED, S_TURN_HOLD, S_PROFILES = range(12)
+    S_START, S_SPEED, S_TURN_HOLD, S_PROFILES, S_BOARD, S_MAP = range(14)
+BOARDS = {1: "3 keys + knob", 2: "6 keys + knob", 3: "6 keys + knob, keys wired in reverse"}
+MAP_LEN, MAP_LED_REVERSED, MAP_NO_KNOB = 10, 0x10, 0x20
 MAGIC = 0xA5
 FLAG_INVERT, FLAG_HALFSTEP = 0x01, 0x02
 ALL_PROFILES = 7
@@ -226,7 +232,7 @@ class Layout:
         self.size, self.profiles, self.usb, self.leds = info[6], info[7], info[8], info[9]
         self.rec_size, self.prof_off, self.prof_size, self.rec_off = info[10:14]
         self.version, self.current = info[14], info[15]
-        self.inputs = self.buttons + 2
+        self.inputs = info[16] if len(info) > 16 else self.buttons + 2
         names, n = [], 1
         for i in range(self.buttons):
             if i == self.knob:
@@ -234,7 +240,11 @@ class Layout:
             else:
                 names.append(f"key{n}")
                 n += 1
-        self.names = names + ["right", "left"]
+        self.names = names + ["right", "left"][:self.inputs - self.buttons]
+
+    @property
+    def board_name(self):
+        return BOARDS.get(self.board, "board of your own")
 
     def input_index(self, name):
         try:
@@ -470,7 +480,8 @@ class Settings:
         f = self.b[S_FLAGS]
         return {
             "format": "wildpad-settings", "version": SETTINGS_VERSION,
-            "board": {"inputs": L.names},
+            "board": dict({"id": L.board, "inputs": L.names},
+                          **({"map": list(self.b[S_MAP:S_MAP + MAP_LEN])} if L.board == 0 else {})),
             "options": {
                 "brightness": self.b[S_BRIGHTNESS], "holdMs": self.b[S_HOLD] * 10,
                 "debounceMs": self.b[S_DEBOUNCE], "tapMs": self.b[S_TAP],
@@ -534,10 +545,19 @@ class Device:
         self.dev = hid.device()
         self.dev.open_path(path)
         self.seq = 0
-        self.layout = Layout(self.cmd(CMD_INFO)[:16])
+        self.layout = Layout(self.cmd(CMD_INFO)[:17])
 
     def close(self):
         self.dev.close()
+
+    def set_board(self, board, pin_map=b""):
+        """Tell the pad which board it is; it starts over with factory settings for it."""
+        reconnect = self.cmd(CMD_BOARD, board, bytes(pin_map))[0]
+        self.cmd(CMD_SAVE)
+        self.layout = Layout(self.cmd(CMD_INFO)[:17])
+        if reconnect:
+            self.cmd(CMD_REBOOT, wait=False)
+        return bool(reconnect)
 
     def cmd(self, cmd, off=0, data=b"", wait=True):
         self.seq = (self.seq + 1) & 0x7F
@@ -606,8 +626,8 @@ def print_settings(s):
 
 def cmd_info(d):
     L = d.layout
-    print(f"Wildpad firmware {L.fw}, board {L.board}: {L.buttons} buttons, {L.leds} LEDs")
-    print(f"USB layout    {USB_LAYOUTS[L.usb] if L.usb < 3 else L.usb}")
+    print(f"Wildpad firmware {L.fw}, board {L.board} ({L.board_name}): {L.buttons} buttons, {L.leds} LEDs")
+    print(f"USB layout    {USB_LAYOUTS[L.usb] if L.usb < len(USB_LAYOUTS) else L.usb}")
     print(f"profiles      up to {L.profiles}, now in profile {L.current + 1}")
     print(f"inputs        {' '.join(L.names)}")
 
@@ -652,6 +672,33 @@ OPTIONS = {
     "turn-hold-ms": (S_TURN_HOLD, 200, 3000, 100),
 }
 FLAG_OPTIONS = {"reverse-knob": FLAG_INVERT, "half-step": FLAG_HALFSTEP}
+
+
+def parse_pin_map(args):
+    """'P1.1 P1.7 P1.6 knob:P3.3 leds:3 [reversed] [no-knob]' -> 10-byte board map."""
+    def pin(text):
+        m = re.fullmatch(r"[Pp]([13])\.([0-7])", text)
+        if not m:
+            raise ActionError(f"'{text}' is not a pin like P1.1 or P3.2")
+        return (8 if m[1] == "3" else 0) + int(m[2])
+    pins, knob, leds, flags = [], None, 0, 0
+    for a in args:
+        if a.lower().startswith("knob:"):
+            knob = pin(a[5:])
+        elif a.lower().startswith("leds:"):
+            leds = int(a[5:])
+        elif a.lower() == "reversed":
+            flags |= MAP_LED_REVERSED
+        elif a.lower() == "no-knob":
+            flags |= MAP_NO_KNOB
+        else:
+            pins.append(pin(a))
+    if knob is not None:
+        pins.append(knob)
+    if not 1 <= len(pins) <= 8 or not 0 <= leds <= 8:
+        raise ActionError("1 to 8 buttons (keys + knob switch) and 0 to 8 LEDs")
+    knob_index = len(pins) - 1 if knob is not None else 15
+    return bytes([len(pins) | knob_index << 4, leds | flags] + pins + [0xFF] * (8 - len(pins)))
 
 
 def cmd_actions():
@@ -757,6 +804,10 @@ def main(argv):
         elif c == "import" and len(args) == 1:
             with open(args[0], encoding="utf-8") as f:
                 j = json.load(f)
+            want = j.get("board", {})
+            if "id" in want and (want["id"] != L.board or want["id"] == 0):
+                if d.set_board(want["id"], want.get("map", b"")):
+                    sys.exit("The pad is now set up for the file's board and reconnects; run the import again.")
             s = d.read()
             s.from_json(j)
             apply(d, s)
@@ -766,6 +817,17 @@ def main(argv):
             if reconnect:
                 d.cmd(CMD_REBOOT, wait=False)
             print("factory settings restored")
+        elif c == "board" and not args:
+            print(f"this pad: board {L.board} ({L.board_name}), inputs {' '.join(L.names)}")
+            print("known boards: " + ", ".join(f"{k} = {v}" for k, v in BOARDS.items()))
+        elif c == "board" and args[0] == "custom":
+            pin_map = parse_pin_map(args[1:])
+            reconnect = d.set_board(0, pin_map)
+            print("custom board set, factory settings for it" + (" (reconnecting)" if reconnect else ""))
+        elif c == "board" and len(args) == 1:
+            reconnect = d.set_board(int(args[0]))
+            print(f"board {args[0]} ({BOARDS.get(int(args[0]), '?')}), factory settings for it"
+                  + (" (reconnecting)" if reconnect else ""))
         elif c == "recenter":
             d.cmd(CMD_RECENTER)
         elif c == "reboot":

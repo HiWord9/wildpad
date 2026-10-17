@@ -153,6 +153,18 @@ def test_sequence():
           f"{log}")
 
 
+def test_board():
+    raw = simulate("board", [TEST / "test_board.c", *FIRMWARE], 0x300, 6 + 3 * 24,
+                   {"main.c": ["main=fw_main"], "settings.c": ["SET_load=SET_load_real"]})
+    check(raw[1] == 1 and list(raw[2:6]) == [9, 2, 31, 6],
+          "6-key board: factory settings valid; 9 inputs, 2 profiles of 31 bytes, 6 LEDs", f"{list(raw[1:6])}")
+    log = [(chr(raw[6 + 3 * i]), raw[7 + 3 * i], raw[8 + 3 * i]) for i in range(raw[0])]
+    expected = [("C", 0xB6, 0), ("C", 0, 0), ("C", 0xEA, 0), ("C", 0, 0), ("C", 0xE9, 0), ("C", 0, 0),
+                ("K", 1, 0x1B), ("K", 0, 0)]
+    check(log == expected, "6-key board: keys on their pins, knob + key 2 -> profile 2, key 4 there -> Ctrl+X",
+          f"{log}")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     test_decoder()
@@ -160,6 +172,7 @@ def main():
     test_gamepad()
     test_switch()
     test_sequence()
+    test_board()
     print(f"\n{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 
