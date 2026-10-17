@@ -1009,10 +1009,20 @@ static void reboot(void) {
   while(1);
 }
 
-// Enter the USB bootloader through a chip reset: main() jumps to it straight from the
+// Start the ROM bootloader. It gives up after about 10 s without a command, timed by
+// timer 0 at Fsys/12, and doesn't set that clock itself; at Fsys/4 it gives up after
+// ~3.3 s (each command still leaves ~20 s). That matters on Windows: when WinUSB
+// starts, it asks GET_STATUS, which the bootloader stalls, and a bug in the ROM then
+// often stalls the next request too (SET_CONFIGURATION), so Windows doesn't start the
+// driver (code 10). The flasher just asks again, and a failed try now costs 3 s.
+static void startBootloader(void) {
+  T2MOD = bT0_CLK;
+  BOOT_now();
+}
+
+// Enter the USB bootloader through a chip reset: main() starts it straight from the
 // reset state (default clock, untouched peripherals), like a bootloader entered at
-// plug-in. Jumping from the running firmware made Windows fail to start the
-// bootloader's driver (code 10) most of the time.
+// plug-in.
 static void enterBootloader(void) {
   uint8_t i;
   RST_keep(KEEP_BOOTLOADER);                                // even a watchdog reset gets there
@@ -1046,11 +1056,7 @@ void main(void) {
 #ifndef TEST_HARNESS
   if(RST_getKeep() == KEEP_BOOTLOADER) {                    // asked for the bootloader
     RST_keep(0);
-    // Stay off the bus for about 2 s first (default 6 MHz clock after the reset, so
-    // DLY_ms counts ~2.7x slow): when the bootloader showed up a moment after the pad
-    // left, Windows failed to start its driver (code 10); after a real unplug it works.
-    DLY_ms(750);
-    BOOT_now();
+    startBootloader();
   }
   // Start every boot from a clean chip. After its time-out the ROM bootloader hands
   // over without a reset, leaving its USB and interrupt setup behind; the pad then
@@ -1076,7 +1082,7 @@ void main(void) {
   if(btn & BTN_BIT(BOOT_BUTTON)) {                          // key 1 held at plug-in: bootloader
     NEO_latch();
     for(i = nLeds * 3; i; i--) NEO_sendByte(127);
-    BOOT_now();
+    startBootloader();
   }
 
   persona = wantedPersona();

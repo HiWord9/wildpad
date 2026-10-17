@@ -87,11 +87,9 @@ The stock firmware can't be backed up first: the CH552 bootloader has no read co
 the bootloader by itself. If that ever fails, unplug the pad and plug it back in while
 holding **key 1**.
 
-If Windows often fails to start the bootloader's driver (Device Manager: code 10), run
-`tools\windows-bootloader-fix.ps1` once (right-click → *Run with PowerShell*, asks for
-administrator rights). The CH552's built-in bootloader mishandles the request that
-follows one it doesn't support, and Windows asks it such a question (a "Microsoft OS
-descriptor") on every connect; the script tells Windows the answer is "none".
+On Windows the bootloader sometimes doesn't start on the first try (a bug in the
+CH552's built-in bootloader trips up Windows' driver); the flasher and the setup page
+then simply ask again, which takes about four seconds.
 
 ### 2. Set up
 

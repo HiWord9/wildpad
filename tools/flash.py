@@ -157,32 +157,10 @@ def driver_missing():
     open_zadig()
 
 
-code10_count = 0                    # times Windows did not start the bootloader driver
-
-
-def osvc_fixed():
-    """True once tools/windows-bootloader-fix.ps1 has stored the OS descriptor answer."""
-    import winreg
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                            r"SYSTEM\CurrentControlSet\Control\usbflags\434855E00250") as k:
-            winreg.QueryValueEx(k, "osvc")
-        return True
-    except OSError:
-        return False
-
-
-def code10_hint():
-    if WINDOWS and code10_count and not osvc_fixed():
-        print(f"\nWindows failed to start the bootloader driver {code10_count} time(s) (code 10). To stop that,"
-              "\nrun tools\\windows-bootloader-fix.ps1 once (right-click -> Run with PowerShell).")
-
-
 def wait_windows(seconds, give_up_on_code10=True):
     """Wait for the bootloader and open it through WinUSB. Returns a transport or None.
     give_up_on_code10: return at once when Windows fails to start the bootloader's
     driver (the caller retries); otherwise keep waiting for the next attempt."""
-    global code10_count
     import winusb
     end = time.time() + seconds
     seen, last_err, said = None, None, False
@@ -198,8 +176,6 @@ def wait_windows(seconds, give_up_on_code10=True):
                     driver_missing()
                     sys.exit("Install the driver, then run flash.bat again.")
             elif winusb.node_problem(inst[0]) == 10:
-                if not said:
-                    code10_count += 1
                 if give_up_on_code10:
                     print("  Windows did not start the bootloader driver this time (code 10)")
                     return None
@@ -344,20 +320,20 @@ def main():
         t = wait_for_bootloader(10)
         if t is not None or attempt == attempts:
             break
-        # After a jump from the firmware, Windows fails to start the bootloader's
-        # WinUSB driver about every other time (problem code 10, STATUS_UNSUCCESSFUL);
-        # restarting the device needs admin rights, so wait for the bootloader to
-        # time out and jump again.
-        print(f"  trying again ({attempt + 1} of {attempts}) - this takes about 10 s ...")
+        # Windows fails to start the bootloader's WinUSB driver about every third time
+        # (problem code 10): WinUSB asks GET_STATUS, the bootloader stalls it, and a
+        # bug in the CH552's ROM then stalls SET_CONFIGURATION too. Restarting the
+        # device needs admin rights, so let the bootloader give up (~3 s with Wildpad
+        # firmware) and ask again.
+        print(f"  trying again ({attempt + 1} of {attempts}) ...")
         wait_for_firmware(15)
     if t is None:
         print(f"\nWaiting for the bootloader ({180 if wait_only else 60} s) ...")
         print("  stock firmware : open the case, short R12 (or P1.5 to GND) while plugging in USB")
         print("  Wildpad firmware: hold key 1 while plugging in USB")
-        print("  The bootloader only stays about 10 s; flashing starts as soon as it shows up.")
+        print("  The bootloader only stays a few seconds; flashing starts as soon as it shows up.")
         t = wait_for_bootloader(180 if wait_only else 60, retrying=False)
     if t is None:
-        code10_hint()
         sys.exit("Bootloader not found.")
 
     try:
@@ -374,7 +350,6 @@ def main():
     finally:
         t.close()
     print(f"\nDONE: {len(data)} bytes written and verified. The macropad restarts by itself.")
-    code10_hint()
 
 
 if __name__ == "__main__":
