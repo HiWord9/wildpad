@@ -360,6 +360,14 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .toast.err { background: var(--danger); color: #fff; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
 
+/* ---------------------------------------------------------------- firmware update */
+.fw-update { margin-top: 14px; }
+.fw-update .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fw-bar { margin-top: 12px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.fw-bar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .15s; }
+.fw-status { margin: 8px 0 0; font-size: 13px; }
+.fw-status.err { color: var(--danger); }
+
 /* ---------------------------------------------------------------- board choice */
 .board-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
 .board-card {
@@ -538,7 +546,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
       <div class="panel">
         <div class="panel-h"><h2>Profiles and startup</h2></div>
         <div class="panel-b">
-          <div class="setting"><div><h3>Profiles</h3><p>How many profiles you use. The pad's memory is small: every profile you don't use leaves 22 more bytes for combos and multi-step actions.</p></div>
+          <div class="setting"><div><h3>Profiles</h3><p>How many profiles you use. The pad's memory is small: every profile you don't use leaves <span id="profBytes">22</span> more bytes for combos and multi-step actions.</p></div>
             <div class="seg right" id="optProfiles" style="min-width:150px"></div></div>
           <div class="setting"><div><h3>Profile after plugging in</h3><p>The pad starts in this profile.</p></div>
             <select class="plain right" id="optStart"></select></div>
@@ -565,8 +573,17 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
         <div class="panel-h"><h2>Firmware</h2></div>
         <div class="panel-b">
           <dl class="info-grid" id="fwInfo"></dl>
-          <p class="note">To update, run <b>flash.bat</b> from the Wildpad download. It switches the pad into update mode by itself. If that ever fails, unplug the pad and plug it back in while holding key 1.</p>
-          <div class="row" style="margin-top:10px"><button class="btn" id="bootBtn" disabled>Switch to update mode now</button></div>
+          <div class="fw-update">
+            <div class="row">
+              <button class="btn primary" id="fwUpdate">Update firmware</button>
+              <button class="btn" id="fwPick">Use a file…</button>
+              <input type="file" id="fwFile" accept=".bin" class="hidden">
+              <span class="muted small" id="fwSource"></span>
+            </div>
+            <div class="fw-bar hidden" id="fwBar"><i id="fwFill"></i></div>
+            <p class="fw-status hidden" id="fwStatus" role="status" aria-live="polite"></p>
+          </div>
+          <p class="note">The pad switches to its update mode by itself, and the browser asks once to use <b>USB Module</b>: pick it. On Windows, that module needs the WinUSB driver first: run <a href="https://zadig.akeo.ie" target="_blank" rel="noopener">Zadig</a> while the pad is in update mode (plug it in holding key 1), choose <b>USB Module</b>, install <b>WinUSB</b>. If the update can't start, plug the pad in while holding key 1 and press <i>Update firmware</i> again. Without the browser: <b>flash.bat</b> from the Wildpad download.</p>
         </div>
       </div>
     </div>
@@ -1853,6 +1870,7 @@ function renderSettings() {
   $("optTap").value = b[S.TAP]; $("optTapVal").textContent = b[S.TAP] + " ms";
   $("optDebounce").value = b[S.DEBOUNCE]; $("optDebounceVal").textContent = b[S.DEBOUNCE] + " ms";
   $("optTurnHold").value = b[S.TURN_HOLD] || 8; $("optTurnHoldVal").textContent = ((b[S.TURN_HOLD] || 8) / 10).toFixed(1) + " s";
+  $("profBytes").textContent = L.profSize;
   const st = $("optStart"); st.replaceChildren(...Array.from({ length: model.np }, (_, p) => h("option", { value: p, selected: p === b[S.START], text: `Profile ${p + 1}` })));
   const pc = $("optProfiles"); pc.replaceChildren(...Array.from({ length: L.profiles }, (_, k) => h("button", {
     "aria-pressed": k + 1 === model.np ? "true" : "false",
@@ -1869,8 +1887,157 @@ function renderSettings() {
     h("dt", { text: "Board" }), h("dd", { text: `${L.boardName}, ${L.leds} light${L.leds === 1 ? "" : "s"}` }),
     h("dt", { text: "Shows up as" }), h("dd", { text: dev ? usb : "—" }),
     h("dt", { text: "Memory" }), h("dd", { text: `${model.np} of ${L.profiles} profiles in use; ${model.recSize()} bytes for combos and steps, ${model.usedBytes()} used` }));
-  $("bootBtn").disabled = !dev;
+  $("fwUpdate").disabled = !("usb" in navigator);
   renderBoard();
+}
+
+// ---------------------------------------------------------------- firmware update (WebUSB)
+// Same protocol as tools/flash.py: the CH552's ROM bootloader (4348:55E0, v2.x) on
+// bulk endpoint 2.
+const BOOT_VID = 0x4348, BOOT_PID = 0x55E0, CODE_SIZE = 14336;
+const FW_URLS = ["wildpad.bin", "../firmware/wildpad.bin", "../firmware/build/wildpad.bin"];
+const DETECT = [0xA1, 0x12, 0x00, 0x52, 0x11, 0x4D, 0x43, 0x55, 0x20, 0x49, 0x53, 0x50, 0x20, 0x26, 0x20, 0x57, 0x43, 0x48, 0x2E, 0x43, 0x4E];
+let fwImage = null, updating = false;
+
+// A Wildpad image: fits the code flash and starts with the reset jump (LJMP)
+const validFirmware = d => d.length > 1024 && d.length <= CODE_SIZE && d[0] === 0x02;
+
+async function loadFirmware() {
+  for (const url of FW_URLS) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) continue;
+      const data = new Uint8Array(await r.arrayBuffer());
+      if (!validFirmware(data)) continue;
+      fwImage = { data, name: url.split("/").pop() };
+      $("fwSource").textContent = `Latest firmware, ${(data.length / 1024).toFixed(1)} KB`;
+      return;
+    } catch { /* not served here */ }
+  }
+  $("fwSource").textContent = "Pick the firmware file (wildpad.bin) with “Use a file…”.";
+}
+
+function fwStatus(text, err, progress) {
+  const st = $("fwStatus");
+  st.textContent = text; st.className = "fw-status" + (err ? " err" : "");
+  $("fwBar").classList.toggle("hidden", progress === undefined);
+  if (progress !== undefined) $("fwFill").style.width = `${Math.round(progress * 100)}%`;
+}
+
+const withTimeout = (promise, ms, what) => Promise.race([promise,
+  new Promise((_, rej) => setTimeout(() => rej(new Error(`the update module did not answer (${what})`)), ms))]);
+
+class Isp {
+  constructor(usb) { this.usb = usb; this.chip = 0; }
+  async cmd(bytes) {
+    await withTimeout(this.usb.transferOut(2, new Uint8Array(bytes)), 2000, "write");
+    const r = await withTimeout(this.usb.transferIn(2, 64), 2000, "read");
+    return new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+  }
+  async detect() {
+    const r = await this.cmd(DETECT);
+    if (r.length !== 6 || r[4] !== 0x52) throw new Error("this isn't a CH552");
+    this.chip = r[4];
+    const c = await this.cmd([0xA7, 0x02, 0x00, 0x1F, 0x00]);
+    if (c.length !== 30) throw new Error("could not read the update module's settings");
+    const key = (c[22] + c[23] + c[24] + c[25]) & 0xFF;
+    const k = new Uint8Array(64); k.set([0xA3, 0x30, 0x00]); k.fill(key, 3, 3 + 0x30);
+    await this.cmd(k);
+    return `${c[19]}.${c[20]}${c[21]}`;
+  }
+  async erase(size) {
+    const r = await this.cmd([0xA4, 0x01, 0x00, Math.max(8, Math.ceil(size / 1024))]);
+    if (r[4] !== 0) throw new Error("erasing failed");
+  }
+  async write(data, verify, progress) {
+    for (let addr = 0; addr < data.length;) {
+      const n = Math.min(0x38, data.length - addr), rest = data.length - addr, buf = new Uint8Array(64);
+      buf[0] = verify ? 0xA6 : 0xA5; buf[1] = n + 5; buf[3] = addr & 0xFF; buf[4] = addr >> 8; buf[7] = rest & 0xFF;
+      buf.set(data.subarray(addr, addr + n), 8);
+      for (let x = 7; x < n + 8; x += 8) buf[x] ^= this.chip;
+      const r = await this.cmd(buf);
+      if (![0x00, 0xFE, 0xF5].includes(r[4])) throw new Error(`${verify ? "checking" : "writing"} failed at 0x${addr.toString(16)}`);
+      addr += n;
+      progress(addr / data.length);
+    }
+  }
+  async exit() { await this.usb.transferOut(2, new Uint8Array([0xA2, 0x01, 0x00, 0x01])).catch(() => {}); }
+}
+
+const isBoot = d => d.vendorId === BOOT_VID && d.productId === BOOT_PID;
+
+// Wait for the bootloader. Asking for permission must happen in the click itself;
+// afterwards the browser hands the device over as soon as it shows up.
+async function findBootloader(askNow) {
+  const known = (await navigator.usb.getDevices()).find(isBoot);
+  if (known) return known;
+  if (askNow) return navigator.usb.requestDevice({ filters: [{ vendorId: BOOT_VID, productId: BOOT_PID }] });
+  return new Promise(res => {
+    const on = e => { if (isBoot(e.device)) { navigator.usb.removeEventListener("connect", on); res(e.device); } };
+    navigator.usb.addEventListener("connect", on);
+    setTimeout(() => { navigator.usb.removeEventListener("connect", on); res(null); }, 9000);
+  });
+}
+
+async function flashDevice(usb) {
+  const data = fwImage.data;
+  await usb.open();
+  try {
+    if (usb.configuration === null) await usb.selectConfiguration(1);
+    await usb.claimInterface(0);
+    const isp = new Isp(usb);
+    const ver = await isp.detect();
+    fwStatus(`Update module ${ver} found. Erasing…`, false, 0);
+    await isp.erase(data.length);
+    await isp.write(data, false, f => fwStatus("Writing…", false, f * 0.5));
+    await isp.write(data, true, f => fwStatus("Checking…", false, 0.5 + f * 0.5));
+    await isp.exit();
+  } finally { await usb.close().catch(() => {}); }
+}
+
+async function updateFirmware() {
+  if (updating) return;
+  if (!("usb" in navigator)) { fwStatus("Firmware updates need Chrome or Edge (WebUSB).", true); return; }
+  if (!fwImage) { fwStatus("Pick the firmware file first (Use a file…).", true); return; }
+  updating = true;
+  $("fwUpdate").disabled = true;
+  try {
+    const permitted = (await navigator.usb.getDevices()).some(isBoot);
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      if (dev) {
+        fwStatus(attempt === 1 ? "Switching the pad to update mode…" : `Trying again (${attempt} of 6)…`, false);
+        await command(CMD.BOOT, 0, [], false).catch(() => {});
+      } else if (attempt === 1) fwStatus("Waiting for the pad in update mode (plug it in holding key 1)…", false);
+      let usb;
+      try { usb = await findBootloader(attempt === 1 && !permitted); }
+      catch (e) {
+        if (e.name === "NotFoundError") { fwStatus("No update module chosen. Press Update firmware to try again.", true); return; }
+        throw e;
+      }
+      if (usb) {
+        try {
+          await flashDevice(usb);
+          fwStatus("Done. The pad restarts with the new firmware.", false, 1);
+          toast("Firmware updated");
+          return;
+        } catch (e) {
+          if (e.name === "SecurityError" || /access denied/i.test(e.message))
+            throw new Error("the browser may not use the update module. On Windows, install the WinUSB driver for “USB Module” with Zadig (see below)");
+          console.warn("update attempt failed:", e);
+        }
+      }
+      // Windows sometimes doesn't start the module's driver; it gives up after ~10 s
+      // and the pad comes back on its own. Wait for it, then ask again.
+      fwStatus("The update module didn't start. Waiting for the pad to come back…", false);
+      for (let t = 0; t < 40 && !dev; t++) await sleep(500);
+    }
+    fwStatus("The update didn't start. Plug the pad in while holding key 1, then press Update firmware. On Windows, see the note below.", true);
+  } catch (e) {
+    fwStatus("Update failed: " + (e.message || e), true);
+  } finally {
+    updating = false;
+    $("fwUpdate").disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------- board choice
@@ -2050,9 +2217,17 @@ $("factoryYes").addEventListener("click", () => {
   change(m => m.load(factory(L, m).bytes()), "factory");
   toast("Factory settings restored");
 });
-$("bootBtn").addEventListener("click", async () => {
-  try { await command(CMD.BOOT, 0, [], false); toast("The pad is in update mode now. Run flash.bat within 10 seconds."); } catch (e) { fail(e); }
+$("fwUpdate").addEventListener("click", updateFirmware);
+$("fwPick").addEventListener("click", () => $("fwFile").click());
+$("fwFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const data = new Uint8Array(await f.arrayBuffer());
+  if (!validFirmware(data)) { toast("That isn't a Wildpad firmware file", true); return; }
+  fwImage = { data, name: f.name };
+  $("fwSource").textContent = `${f.name}, ${(data.length / 1024).toFixed(1)} KB`;
 });
+loadFirmware();
 bindSettings();
 
 if ("hid" in navigator) {

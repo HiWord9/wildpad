@@ -82,10 +82,16 @@ and Chrome, Edge or Opera. Download the latest release and unzip it.
 
 The stock firmware can't be backed up first: the CH552 bootloader has no read command.
 
-**Updates** need no screwdriver: run `flash.bat` and it switches the running firmware
-into the bootloader by itself. Windows sometimes fails to start the bootloader driver
-after such a switch; the flasher then simply tries again. If it gives up, unplug the
-pad and plug it back in while holding **key 1**.
+**Updates** need no screwdriver: press *Update firmware* on the setup page
+(*Settings → Firmware*), or run `flash.bat`. Both switch the running firmware into
+the bootloader by itself. If that ever fails, unplug the pad and plug it back in while
+holding **key 1**.
+
+If Windows often fails to start the bootloader's driver (Device Manager: code 10), run
+`tools\windows-bootloader-fix.ps1` once (right-click → *Run with PowerShell*, asks for
+administrator rights). The CH552's built-in bootloader mishandles the request that
+follows one it doesn't support, and Windows asks it such a question (a "Microsoft OS
+descriptor") on every connect; the script tells Windows the answer is "none".
 
 ### 2. Set up
 
