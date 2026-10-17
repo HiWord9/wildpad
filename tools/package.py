@@ -1,9 +1,14 @@
-"""Create the release zip: dist/wildpad-<version>.zip
+"""Release files. Run firmware/build.py first.
 
-Contains the built firmware, the flasher, the setup page, the command-line tool,
-the launcher scripts and the documentation. Run firmware/build.py first.
+  python tools/package.py              dist/wildpad-<version>.zip: firmware, flasher,
+                                       setup page, command-line tool, launchers, docs
+  python tools/package.py --site DIR   the website (GitHub Pages): the setup page as
+                                       index.html next to the firmware it installs
+  python tools/package.py --version    print the firmware version
 """
+import json
 import re
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -17,11 +22,28 @@ def version():
     return ".".join(parts)
 
 
+def site(out, fw, ver):
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copy(ROOT / "tools" / "configurator.html", out / "index.html")
+    shutil.copy(fw, out / "wildpad.bin")
+    shutil.copy(ROOT / "tools" / "60-wildpad.rules", out / "60-wildpad.rules")
+    (out / "docs").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "docs" / "r12_short.jpeg", out / "docs" / "r12_short.jpeg")
+    (out / "version.json").write_text(json.dumps({"firmware": ver}))
+    print(f"site in {out}")
+
+
 def main():
+    if "--version" in sys.argv:
+        print(version())
+        return
     fw = ROOT / "firmware" / "build" / "wildpad.bin"
     if not fw.exists():
         sys.exit("build the firmware first: python firmware/build.py")
     ver = version()
+    if "--site" in sys.argv:
+        site(Path(sys.argv[sys.argv.index("--site") + 1]), fw, ver)
+        return
     files = {
         fw: "firmware/wildpad.bin",
         ROOT / "flash.bat": "flash.bat",

@@ -1952,6 +1952,8 @@ function renderSettings() {
 // bulk endpoint 2.
 const BOOT_VID = 0x4348, BOOT_PID = 0x55E0, CODE_SIZE = 14336;
 const FW_URLS = ["wildpad.bin", "../firmware/wildpad.bin", "../firmware/build/wildpad.bin"];
+// The page runs from the download (tools/configurator.html) or as the website's index
+const DOCS = location.pathname.includes("/tools/") ? "../docs/" : "docs/";
 const DETECT = [0xA1, 0x12, 0x00, 0x52, 0x11, 0x4D, 0x43, 0x55, 0x20, 0x49, 0x53, 0x50, 0x20, 0x26, 0x20, 0x57, 0x43, 0x48, 0x2E, 0x43, 0x4E];
 let fwImage = null, updating = false;
 
@@ -1966,7 +1968,8 @@ async function loadFirmware() {
       const data = new Uint8Array(await r.arrayBuffer());
       if (!validFirmware(data)) continue;
       fwImage = { data, name: url.split("/").pop() };
-      $("fwSource").textContent = `Latest firmware, ${(data.length / 1024).toFixed(1)} KB`;
+      const ver = await fetch("version.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
+      $("fwSource").textContent = ver?.firmware ? `Latest firmware: ${ver.firmware}` : `Latest firmware, ${(data.length / 1024).toFixed(1)} KB`;
       return;
     } catch { /* not served here */ }
   }
@@ -2157,7 +2160,7 @@ function renderGuide() {
     fill(h("h3", { text: "Open the case and find the two pads" }),
       three ? P("Remove the four screws on the bottom and lift off the bottom plate. Next to the black chip marked WCH, find R12: two small pads with nothing soldered on them.")
             : P("Remove the screws on the bottom and lift off the bottom plate. Look for two small empty pads close to the black chip marked WCH, usually labelled R12."),
-      three ? h("img", { class: "photo", src: "../docs/r12_short.jpeg", alt: "Circuit board: the two empty R12 pads next to the chip, circled in red", onclick: e => window.open(e.target.src) }) : null,
+      three ? h("img", { class: "photo", src: DOCS + "r12_short.jpeg", alt: "Circuit board: the two empty R12 pads next to the chip, circled in red", onclick: e => window.open(e.target.src) }) : null,
       three ? null : h("p", { class: "tip", text: "No photo of this board yet. Try first without opening it: on many 6-key pads one key is wired to the same chip pin, so holding key 3 (or key 4) while plugging in does the same. Otherwise: the pads connect chip pin P1.5 to ground (GND), and connecting those two directly works too." }),
       P("You'll need something small that conducts: tweezers, a paper clip or a piece of wire."));
   } else if (key === "install" && guide.alt) {
