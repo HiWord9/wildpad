@@ -360,6 +360,45 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .toast.err { background: var(--danger); color: #fff; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
 
+/* ---------------------------------------------------------------- first install guide */
+dialog.guide {
+  width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line);
+  border-radius: 16px; background: var(--panel); color: var(--ink); box-shadow: 0 30px 80px -20px rgba(0,0,0,.5);
+  overflow: hidden;
+}
+dialog.guide::backdrop { background: rgba(10, 12, 14, .55); }
+.guide-in { display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
+.guide-h { display: flex; align-items: center; gap: 12px; padding: 18px 22px 0; }
+.guide-h h2 { margin: 0; font-size: 18px; flex: 1; }
+.guide-steps { display: flex; gap: 6px; list-style: none; margin: 14px 22px 0; padding: 0; counter-reset: gs; flex-wrap: wrap; }
+.guide-steps li {
+  counter-increment: gs; display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-3);
+  padding: 5px 10px 5px 6px; border-radius: 999px;
+}
+.guide-steps li::before {
+  content: counter(gs); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 650; background: var(--line-2); color: var(--ink-2);
+}
+.guide-steps li.done { color: var(--ink-2); }
+.guide-steps li.done::before { content: "✓"; background: var(--line); }
+.guide-steps li.on { color: var(--ink); background: var(--line-2); font-weight: 600; }
+.guide-steps li.on::before { background: var(--ink); color: var(--bg); }
+.guide-body { padding: 18px 22px 8px; overflow-y: auto; font-size: 14px; line-height: 1.5; }
+.guide-body h3 { margin: 0 0 6px; font-size: 16px; }
+.guide-body p { margin: 0 0 12px; color: var(--ink-2); }
+.guide-body ol.do { margin: 0 0 14px; padding-left: 22px; }
+.guide-body ol.do li { margin: 0 0 10px; padding-left: 4px; }
+.guide-body ol.do li b { color: var(--ink); }
+.guide-body img.photo { width: 100%; height: 260px; object-fit: cover; object-position: 30% 22%; border-radius: 12px; border: 1px solid var(--line); margin: 4px 0 12px; cursor: zoom-in; }
+.guide-body .tip { font-size: 13px; color: var(--ink-2); background: var(--line-2); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+.copy { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 9px; margin: 2px 2px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--raised); font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.copy button { border: 0; background: var(--line-2); color: var(--ink-2); border-radius: 5px; padding: 2px 7px; font-size: 12px; }
+.copy button:hover { color: var(--ink); }
+.guide-f { display: flex; align-items: center; gap: 8px; padding: 12px 22px 18px; border-top: 1px solid var(--line-2); }
+.guide-f .grow { flex: 1; }
+.guide .board-list { margin: 4px 0 12px; }
+
 /* ---------------------------------------------------------------- firmware update */
 .fw-update { margin-top: 14px; }
 .fw-update .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -444,7 +483,17 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
   </div>
 </header>
 
-<div class="banner" id="banner"><div><span id="bannerText"></span><button class="btn" id="bannerBtn">Connect</button></div></div>
+<div class="banner" id="banner"><div><span id="bannerText"></span><button class="btn" id="guideBtn">Install on a new pad</button><button class="btn" id="bannerBtn">Connect</button></div></div>
+
+<dialog class="guide" id="guide" aria-labelledby="guideTitle">
+  <div class="guide-in">
+    <div class="guide-h"><h2 id="guideTitle">Install Wildpad on a new pad</h2>
+      <button class="icon-btn" id="guideClose" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <ol class="guide-steps" id="guideSteps"></ol>
+    <div class="guide-body" id="guideBody"></div>
+    <div class="guide-f"><button class="btn" id="guideBack">Back</button><span class="grow"></span><button class="btn primary" id="guideNext">Next</button></div>
+  </div>
+</dialog>
 
 <main>
   <div class="profiles" id="profiles"></div>
@@ -583,6 +632,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
             <div class="fw-bar hidden" id="fwBar"><i id="fwFill"></i></div>
             <p class="fw-status hidden" id="fwStatus" role="status" aria-live="polite"></p>
           </div>
+          <p class="note">A pad that still runs its factory firmware: <a href="#" id="guideLink">install Wildpad step by step</a>.</p>
           <p class="note">The pad switches to its update mode by itself; the browser asks once to use <b>Wildpad</b>: pick it. No driver is needed. If the pad doesn't answer, plug it in while holding key 1 and press <i>Update firmware</i>: that starts the chip's own bootloader (<b>USB Module</b>), which on Windows needs the WinUSB driver once: run <a href="https://zadig.akeo.ie" target="_blank" rel="noopener">Zadig</a> while it's connected, choose <b>USB Module</b>, install <b>WinUSB</b>. Without the browser: <b>flash.bat</b> from the Wildpad download.</p>
         </div>
       </div>
@@ -1921,10 +1971,11 @@ async function loadFirmware() {
 }
 
 function fwStatus(text, err, progress) {
-  const st = $("fwStatus");
+  const g = $("guide").open, st = $(g ? "gStatus" : "fwStatus"), bar = $(g ? "gBar" : "fwBar");
+  if (!st) return;
   st.textContent = text; st.className = "fw-status" + (err ? " err" : "");
-  $("fwBar").classList.toggle("hidden", progress === undefined);
-  if (progress !== undefined) $("fwFill").style.width = `${Math.round(progress * 100)}%`;
+  bar.classList.toggle("hidden", progress === undefined);
+  if (progress !== undefined) bar.firstChild.style.width = `${Math.round(progress * 100)}%`;
 }
 
 const withTimeout = (promise, ms, what) => Promise.race([promise,
@@ -2037,6 +2088,100 @@ async function updateFirmware() {
   } finally {
     updating = false;
     $("fwUpdate").disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- first install guide
+// From the factory firmware: the chip's own bootloader, entered by shorting two pads
+// while plugging in. Windows needs the WinUSB driver for it once (Zadig).
+const isWindows = /Windows/i.test(navigator.userAgent);
+const guide = { step: 0, board: 1, busy: false, done: false };
+
+function guideSteps() {
+  return [["pad", "Your pad"], ...(isWindows ? [["driver", "Driver"]] : []), ["open", "Open it"], ["install", "Install"], ["done", "Done"]];
+}
+
+function openGuide() {
+  Object.assign(guide, { step: 0, busy: false, done: false });
+  renderGuide();
+  $("guide").showModal();
+}
+
+function copyChip(text) {
+  const b = h("button", { type: "button", text: "Copy" });
+  b.addEventListener("click", () => navigator.clipboard.writeText(text).then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1200); }));
+  return h("span", { class: "copy" }, text, b);
+}
+
+function renderGuide() {
+  const steps = guideSteps(), key = steps[guide.step][0], body = $("guideBody");
+  $("guideSteps").replaceChildren(...steps.map(([, name], i) => h("li", { class: i < guide.step ? "done" : i === guide.step ? "on" : "", text: name })));
+  $("guideBack").disabled = guide.step === 0 || guide.busy;
+  $("guideNext").disabled = guide.busy || (key === "install" && !guide.done);
+  $("guideNext").textContent = key === "done" ? "Close" : "Next";
+  const P = text => h("p", { text });
+  const fill = (...kids) => body.replaceChildren(...kids.flat().filter(k => k != null && k !== false));
+  if (key === "pad") {
+    fill(h("h3", { text: "Which pad is it?" }),
+      P("Wildpad replaces the firmware the pad came with. For that the case is opened once; later updates need no screwdriver."),
+      h("div", { class: "board-list" }, [[1, 3, 3, "3 keys and a knob"], [2, 6, 3, "6 keys and a knob"], [0, 0, 0, "Another CH552 pad"]].map(([id, keys, cols, name]) =>
+        h("button", { class: "board-card", "aria-pressed": guide.board === id ? "true" : "false", onclick: () => { guide.board = id; renderGuide(); } },
+          keys ? miniBoard(keys, cols, true) : h("div", { class: "mini-q", text: "?" }), h("span", { text: name })))),
+      !("usb" in navigator) ? h("p", { class: "tip", text: "This browser can't install firmware. Open this page in Chrome or Edge on a computer." }) : null,
+      !fwImage ? h("p", { class: "tip", text: "The firmware file isn't loaded: pick wildpad.bin under Settings → Firmware → Use a file… first." }) : null);
+  } else if (key === "driver") {
+    fill(h("h3", { text: "Install the USB driver (once per computer)" }),
+      P("Windows needs a driver to let the browser talk to the chip's built-in installer. Zadig sets it up in a minute; nothing has to be connected yet."),
+      h("ol", { class: "do" },
+        h("li", {}, "Download ", h("a", { href: "https://zadig.akeo.ie", target: "_blank", rel: "noopener", text: "Zadig" }), " and start it. It needs no installation; allow it to make changes."),
+        h("li", {}, "In its menu choose ", h("b", { text: "Device → Create New Device" }), "."),
+        h("li", {}, "Type the name ", copyChip("CH552 bootloader"), " into the long field, and ", copyChip("4348"), " and ", copyChip("55E0"), " into the two small USB ID fields."),
+        h("li", {}, "Right of the green arrow, pick ", h("b", { text: "WinUSB" }), ", then press ", h("b", { text: "Install Driver" }), " and wait for “The driver was installed successfully”.")),
+      h("p", { class: "tip", text: "Done this before on this computer? Then just go on." }));
+  } else if (key === "open") {
+    const three = guide.board === 1;
+    fill(h("h3", { text: "Open the case and find the two pads" }),
+      three ? P("Remove the four screws on the bottom and lift off the bottom plate. Next to the black chip marked WCH, find R12: two small pads with nothing soldered on them.")
+            : P("Remove the screws on the bottom and lift off the bottom plate. Look for two small empty pads close to the black chip marked WCH, usually labelled R12."),
+      three ? h("img", { class: "photo", src: "../docs/r12_short.jpeg", alt: "Circuit board: the two empty R12 pads next to the chip, circled in red", onclick: e => window.open(e.target.src) }) : null,
+      three ? null : h("p", { class: "tip", text: "No photo of this board yet. Try first without opening it: on many 6-key pads one key is wired to the same chip pin, so holding key 3 (or key 4) while plugging in does the same. Otherwise: the pads connect chip pin P1.5 to ground (GND), and connecting those two directly works too." }),
+      P("You'll need something small that conducts: tweezers, a paper clip or a piece of wire."));
+  } else if (key === "install") {
+    fill(h("h3", { text: "Install" }),
+      h("ol", { class: "do" },
+        h("li", {}, "Unplug the pad, then press ", h("b", { text: "Start" }), " below. The browser opens a list of USB devices: leave it open."),
+        h("li", {}, "Connect the two pads with the tweezers and, ", h("b", { text: "while holding them" }), ", plug the USB cable in. The lights stay dark: that's right."),
+        h("li", {}, h("b", { text: "USB Module" }), " shows up in the list. Pick it and press Connect; you can let go of the pads. Installing takes about ten seconds.")),
+      h("div", { class: "row" }, h("button", { class: "btn primary", id: "gStart", text: "Start", disabled: guide.busy || guide.done || !fwImage || !("usb" in navigator), onclick: guideInstall })),
+      h("div", { class: "fw-bar hidden", id: "gBar" }, h("i")),
+      h("p", { class: "fw-status", id: "gStatus", role: "status", "aria-live": "polite" }),
+      h("p", { class: "tip", text: "USB Module doesn't show up within a few seconds? Unplug the pad and plug it in again while connecting the pads. Windows sometimes doesn't start the driver for the chip's installer on the first go." }));
+  } else {
+    fill(h("h3", { text: "Done" }),
+      P("The pad restarts with Wildpad. Put the bottom plate back on; you won't need to open it again: updates now run from this page."),
+      h("ol", { class: "do" },
+        h("li", {}, "Press ", h("b", { text: "Connect" }), " and pick the pad."),
+        guide.board === 1 ? null : h("li", {}, "Under ", h("b", { text: "Settings → Board" }), ", choose your pad (or let the page find its keys)."),
+        h("li", {}, "Click a key on the drawing and choose what it does.")),
+      h("div", { class: "row" }, h("button", { class: "btn primary", text: "Connect", onclick: () => { $("guide").close(); connect(); } })));
+  }
+}
+
+async function guideInstall() {
+  guide.busy = true; renderGuide();
+  try {
+    const usb = (await navigator.usb.getDevices()).find(isBoot)
+      || await navigator.usb.requestDevice({ filters: [{ vendorId: BOOT_VID, productId: BOOT_PID }] });
+    await flashDevice(usb);
+    guide.done = true; guide.busy = false; guide.step++;
+    renderGuide();
+    toast("Wildpad installed");
+  } catch (e) {
+    guide.busy = false; renderGuide();
+    if (e.name === "NotFoundError") fwStatus("Nothing picked. Press Start to try again.", true);
+    else if (e.name === "SecurityError" || /access denied/i.test(e.message))
+      fwStatus("The browser may not use USB Module. " + (isWindows ? "Install the driver with Zadig (step 2) and try again." : "Check that no other program uses it."), true);
+    else fwStatus("Didn't work: " + (e.message || e) + ". Unplug the pad and start again; nothing is broken.", true);
   }
 }
 
@@ -2224,6 +2369,11 @@ $("factoryYes").addEventListener("click", () => {
   toast("Factory settings restored");
 });
 $("fwUpdate").addEventListener("click", updateFirmware);
+$("guideBtn").addEventListener("click", () => openGuide());
+$("guideLink").addEventListener("click", e => { e.preventDefault(); openGuide(); });
+$("guideClose").addEventListener("click", () => $("guide").close());
+$("guideBack").addEventListener("click", () => { guide.step--; renderGuide(); });
+$("guideNext").addEventListener("click", () => { if (guide.step === guideSteps().length - 1) $("guide").close(); else { guide.step++; renderGuide(); } });
 $("fwPick").addEventListener("click", () => $("fwFile").click());
 $("fwFile").addEventListener("change", async e => {
   const f = e.target.files[0]; e.target.value = "";
