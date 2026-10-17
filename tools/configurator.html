@@ -197,11 +197,13 @@ select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
   position: absolute; inset: 13px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #6c737b, #3a3f45 45%, #24282c 100%);
   box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -2px 4px rgba(0,0,0,.5);
-  transition: transform .12s ease-out;
 }
+/* only the marker turns; the light on the cap stays where the light is */
 .knob-top::after {
-  content: ""; position: absolute; left: 50%; top: 9px; width: 4px; height: 18px; margin-left: -2px;
-  border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: linear-gradient(var(--accent), var(--accent)) 50% 9px / 4px 18px no-repeat;
+  filter: drop-shadow(0 0 4px var(--accent));
+  transform: rotate(var(--angle, 0deg)); transition: transform .12s ease-out;
 }
 .knob-holder { position: relative; display: grid; }
 .knob-holder .sel-ring { inset: -8px; border-radius: 50%; }
@@ -1463,7 +1465,8 @@ function renderLive() {
   for (const k of L.keys) $(px + "cap" + k.i)?.classList.toggle("down", !!(live.btn & 1 << k.i));
   $(px + "knob")?.classList.toggle("down", !!(live.btn & 1 << L.knob));
   const det = Math.max(4, model.b[S.DETENTS]);
-  const top = $(px + "knobTop"); if (top) top.style.transform = `rotate(${(live.pos * 360 / det) % 360}deg)`;
+  // no wrapping to 0..360: from 342 to 360 degrees must not animate back the long way
+  const top = $(px + "knobTop"); if (top) top.style.setProperty("--angle", `${live.pos * 360 / det}deg`);
   if (tab === "controls") {
     const tag = $("pressedTag");
     if (tag && sel.kind === "input") tag.classList.toggle("on", sel.i < L.buttons && !!(live.btn & 1 << sel.i));
@@ -2166,7 +2169,7 @@ function renderGuide() {
         h("li", {}, "Unplug the pad, then press ", h("b", { text: "Start" }), " below. The browser opens a list of USB devices: leave it open."),
         h("li", {}, "Connect the two pads with the tweezers and, ", h("b", { text: "while holding them" }), ", plug the USB cable in. The lights stay dark: that's right."),
         h("li", {}, h("b", { text: "USB Module" }), " shows up in the list. Pick it and press Connect; you can let go of the pads. Installing takes about ten seconds.")),
-      h("div", { class: "row" }, h("button", { class: "btn primary", id: "gStart", text: "Start", disabled: guide.busy || guide.done || !fwImage || !("usb" in navigator), onclick: guideInstall })),
+      h("div", { class: "row" }, h("button", { class: "btn primary", id: "gStart", text: "Start", disabled: guide.busy || !fwImage || !("usb" in navigator), onclick: guideInstall })),
       h("div", { class: "fw-bar hidden", id: "gBar" }, h("i")),
       h("p", { class: "fw-status", id: "gStatus", role: "status", "aria-live": "polite" }),
       h("p", { class: "tip" }, isWindows
