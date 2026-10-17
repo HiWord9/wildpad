@@ -188,17 +188,22 @@ select.plain:hover, input.plain:hover { border-color: var(--ink-3); }
 .knob-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-left: 10px; }
 .knob {
   position: relative; width: 132px; height: 132px; border-radius: 50%; border: 0; padding: 0;
-  background: repeating-conic-gradient(#3b4047 0deg 2.5deg, #23272c 2.5deg 5deg);
+  background: #23272c;
   box-shadow: 0 3px 0 rgba(0,0,0,.4), 0 12px 18px -8px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.06);
   transition: transform .07s;
 }
 .knob.down { transform: scale(.975); }
+/* the grip ring and the marker turn with the knob; the light on the cap stays where the light is */
+.knob::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(#3b4047 0deg 2.5deg, #23272c 2.5deg 5deg);
+  transform: rotate(var(--angle, 0deg)); transition: transform .12s ease-out;
+}
 .knob-top {
   position: absolute; inset: 13px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #6c737b, #3a3f45 45%, #24282c 100%);
   box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -2px 4px rgba(0,0,0,.5);
 }
-/* only the marker turns; the light on the cap stays where the light is */
 .knob-top::after {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
   background: linear-gradient(var(--accent), var(--accent)) 50% 9px / 4px 18px no-repeat;
@@ -1450,7 +1455,7 @@ function renderDevice(px = "") {
       h("div", { class: "knob-holder" },                      // the ring follows the knob, not the legend
         h("span", { class: "sel-ring" }),
         h("button", { class: "knob", id: px + "knob", tabindex: px ? -1 : null, "aria-label": "Knob", onclick: () => select({ kind: "input", i: L.knob < L.buttons ? L.knob : L.right }) },
-          h("span", { class: "knob-top", id: px + "knobTop" }))),
+          h("span", { class: "knob-top" }))),
       legend));
   }
 }
@@ -1470,7 +1475,7 @@ function renderLive() {
   $(px + "knob")?.classList.toggle("down", !!(live.btn & 1 << L.knob));
   const det = Math.max(4, model.b[S.DETENTS]);
   // no wrapping to 0..360: from 342 to 360 degrees must not animate back the long way
-  const top = $(px + "knobTop"); if (top) top.style.setProperty("--angle", `${live.pos * 360 / det}deg`);
+  $(px + "knob")?.style.setProperty("--angle", `${live.pos * 360 / det}deg`);
   if (tab === "controls") {
     const tag = $("pressedTag");
     if (tag && sel.kind === "input") tag.classList.toggle("on", sel.i < L.buttons && !!(live.btn & 1 << sel.i));
@@ -1590,11 +1595,10 @@ function renderKnobInspector(box) {
         AXES.map(([k, n], idx) => h("option", { value: idx, selected: (r.p1 & 15) === idx, text: n })));
       body.append(field("Axis", null, axSel));
       const val = h("span", { class: "val", text: range });
-      const slider = h("input", { type: "range", min: 1, max: 50, value: range, oninput: e => {
+      const slider = h("input", { type: "range", min: 1, max: 50, value: range, oninput: e => {   // applied on release
           val.textContent = e.target.value;
           deg.textContent = `${e.target.value} clicks = ${Math.round(e.target.value * 360 / det)}° of turning`;
-          change(m => m.setAction(prof, L.right, A(T.AXIS, r.p1, +e.target.value)), "range");
-        } });
+        }, onchange: e => change(m => m.setAction(prof, L.right, A(T.AXIS, r.p1, +e.target.value)), "range") });
       const deg = h("p", { class: "note", text: `${range} clicks = ${Math.round(range * 360 / det)}° of turning` });
       body.append(field("Clicks from center to full", null, h("div", { class: "slider-row" }, slider, val), deg));
       const stop = h("label", { class: "switch" }, h("input", { type: "checkbox", checked: !(r.p1 & AXIS_FREE),
@@ -1911,21 +1915,24 @@ function renderLighting() {
   const cur = model.color(prof);
   SWATCHES.forEach(c => sw.append(h("button", { class: "swatch", style: `background:${c}`, title: c, "aria-label": `Color ${c}`,
     "aria-pressed": c === cur ? "true" : "false", onclick: () => change(m => m.setColor(prof, c), "color") })));
-  sw.append(h("input", { type: "color", value: cur, "aria-label": "Custom color", oninput: ev => change(m => m.setColor(prof, ev.target.value), "color") }));
-  $("brightness").value = model.b[S.BRIGHT]; $("brightnessVal").textContent = Math.round(model.b[S.BRIGHT] / 2.55) + " %";
-  $("speed").value = model.b[S.SPEED]; $("speedVal").textContent = model.b[S.SPEED];
+  sw.append(h("input", { type: "color", value: cur, "aria-label": "Custom color", onchange: ev => change(m => m.setColor(prof, ev.target.value), "color") }));
+  showSlider("brightness", model.b[S.BRIGHT]); showSlider("speed", model.b[S.SPEED]);
 }
 
 // ---------------------------------------------------------------- settings
+const SLIDER_TEXT = {
+  brightness: v => Math.round(v / 2.55) + " %", speed: v => v, optDetents: v => v,
+  optHold: v => (v / 100).toFixed(2) + " s", optTap: v => v + " ms", optDebounce: v => v + " ms",
+  optTurnHold: v => (v / 10).toFixed(1) + " s",
+};
+function showSlider(id, v) { $(id).value = v; $(id + "Val").textContent = SLIDER_TEXT[id](v); }
+
 function renderSettings() {
   const b = model.b;
   $("optInvert").checked = !!(b[S.FLAGS] & FLAG.INVERT);
   $("optHalf").checked = !!(b[S.FLAGS] & FLAG.HALF);
-  $("optDetents").value = b[S.DETENTS]; $("optDetentsVal").textContent = b[S.DETENTS];
-  $("optHold").value = b[S.HOLD]; $("optHoldVal").textContent = (b[S.HOLD] / 100).toFixed(2) + " s";
-  $("optTap").value = b[S.TAP]; $("optTapVal").textContent = b[S.TAP] + " ms";
-  $("optDebounce").value = b[S.DEBOUNCE]; $("optDebounceVal").textContent = b[S.DEBOUNCE] + " ms";
-  $("optTurnHold").value = b[S.TURN_HOLD] || 8; $("optTurnHoldVal").textContent = ((b[S.TURN_HOLD] || 8) / 10).toFixed(1) + " s";
+  showSlider("optDetents", b[S.DETENTS]); showSlider("optHold", b[S.HOLD]); showSlider("optTap", b[S.TAP]);
+  showSlider("optDebounce", b[S.DEBOUNCE]); showSlider("optTurnHold", b[S.TURN_HOLD] || 8);
   $("profBytes").textContent = L.profSize;
   const st = $("optStart"); st.replaceChildren(...Array.from({ length: model.np }, (_, p) => h("option", { value: p, selected: p === b[S.START], text: `Profile ${p + 1}` })));
   const pc = $("optProfiles"); pc.replaceChildren(...Array.from({ length: L.profiles }, (_, k) => h("button", {
@@ -2356,7 +2363,11 @@ function renderWizard() {
 function bindSettings() {
   const flag = (id, f) => $(id).addEventListener("change", e => change(m => { m.b[S.FLAGS] = e.target.checked ? m.b[S.FLAGS] | f : m.b[S.FLAGS] & ~f; }, id));
   flag("optInvert", FLAG.INVERT); flag("optHalf", FLAG.HALF);
-  const num = (id, off) => $(id).addEventListener("input", e => change(m => { m.b[off] = +e.target.value; }, id));
+  // sliders show the value while dragged and apply it when let go
+  const num = (id, off) => {
+    $(id).addEventListener("input", e => { $(id + "Val").textContent = SLIDER_TEXT[id](+e.target.value); });
+    $(id).addEventListener("change", e => change(m => { m.b[off] = +e.target.value; }, id));
+  };
   num("optDetents", S.DETENTS); num("optHold", S.HOLD); num("optTap", S.TAP); num("optDebounce", S.DEBOUNCE); num("optTurnHold", S.TURN_HOLD);
   num("brightness", S.BRIGHT); num("speed", S.SPEED);
   $("optStart").addEventListener("change", e => change(m => { m.b[S.START] = +e.target.value; }, "start"));
