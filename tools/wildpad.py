@@ -546,7 +546,10 @@ class Device:
         try:
             import hid
         except ImportError:
-            sys.exit("Missing module: pip install hidapi")
+            import subprocess
+            print("Installing hidapi ...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "hidapi"])
+            import hid
         path = next((d["path"] for d in hid.enumerate(VID, PID) if d.get("usage_page") == USAGE_PAGE), None)
         if path is None:
             sys.exit("No Wildpad macropad found. Is it plugged in and running the Wildpad firmware?")
@@ -842,7 +845,19 @@ def main(argv):
             d.cmd(CMD_BOOTLOADER, wait=False)
             print("the macropad is now in its USB bootloader")
         else:
-            sys.exit("unknown command - run 'wildpad.py help'")
+            USAGE = {
+                "set": "set PROFILE INPUT ACTION [--now|--on-release]",
+                "combo": "combo add HELD TRIGGER ACTION [--profile N]  or  combo del NUMBER",
+                "light": "light PROFILE EFFECT [#COLOR]",
+                "option": "option NAME VALUE",
+                "profile": "profile NUMBER",
+                "export": "export FILE.json",
+                "import": "import FILE.json",
+                "board": "board [NUMBER | custom PIN... knob:PIN leds:N]",
+            }
+            if c in USAGE:
+                sys.exit(f"usage: wildpad.py {USAGE[c]}")
+            sys.exit(f"unknown command '{c}' - run 'wildpad.py help'")
     except ActionError as e:
         sys.exit(f"error: {e}")
     finally:
