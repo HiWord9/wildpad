@@ -48,6 +48,7 @@ def main():
         fw: "firmware/wildpad.bin",
         ROOT / "flash.bat": "flash.bat",
         ROOT / "configure.bat": "configure.bat",
+        ROOT / "requirements.txt": "requirements.txt",
         ROOT / "README.md": "README.md",
         ROOT / "LICENSE": "LICENSE",
         ROOT / "firmware" / "LICENSE": "firmware/LICENSE",
