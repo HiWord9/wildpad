@@ -1392,7 +1392,9 @@ function renderBanner() {
   if (dev) { b.classList.add("hidden"); return; }
   b.classList.remove("hidden");
   if (!("hid" in navigator)) {
-    t.textContent = "This browser can't talk to USB devices. Open this page in Chrome, Edge or Opera on a computer. You can still look around: this is a demo.";
+    t.textContent = location.protocol === "file:"
+      ? "The page was opened as a file. WebHID needs HTTPS or localhost: run configure.bat, or open the page from the project\u2019s website. You can still look around: this is a demo."
+      : "This browser can\u2019t talk to USB devices. Open this page in Chrome, Edge or Opera on a computer. You can still look around: this is a demo.";
     btn.classList.add("hidden");
   } else if (reconnecting) {
     t.textContent = "The pad is reconnecting…"; btn.classList.add("hidden");
