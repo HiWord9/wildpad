@@ -479,6 +479,9 @@ dialog.guide::backdrop { background: rgba(10, 12, 14, .55); }
       <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
     </nav>
     <div class="spacer"></div>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
     <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
     </button>
@@ -486,6 +489,7 @@ dialog.guide::backdrop { background: rgba(10, 12, 14, .55); }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
     </button>
     <div class="conn"><span class="dot" id="dot"></span><span class="label" id="connText">Demo</span></div>
+    <button class="btn hidden" id="disconnectBtn">Disconnect</button>
     <button class="btn primary" id="connect">Connect</button>
   </div>
 </header>
@@ -1374,6 +1378,34 @@ function setAccent() {
   root.setProperty("--accent-soft", `rgba(${r}, ${g}, ${b}, .16)`);
 }
 
+function initTheme() {
+  try {
+    const saved = localStorage.getItem("wildpad-theme");
+    if (saved) document.documentElement.setAttribute("data-theme", saved);
+  } catch {}
+  updateThemeIcon();
+}
+function updateThemeIcon() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark" ||
+    (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const icon = $("themeIcon");
+  if (!icon) return;
+  if (isDark) {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
+  } else {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  }
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  const isDark = current === "dark" || (!current && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const next = isDark ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("wildpad-theme", next); } catch {}
+  updateThemeIcon();
+  setAccent();
+}
+
 // =============================================================================== render
 function render() {
   setAccent();
@@ -1381,6 +1413,7 @@ function render() {
   renderProfiles();
   $("undo").disabled = !undoStack.length; $("redo").disabled = !redoStack.length;
   $("connect").classList.add("hidden");                // the banner carries the Connect button
+  $("disconnectBtn").classList.toggle("hidden", !dev);
   if (tab === "controls") { renderDevice(); renderCombos(); renderInspector(); }
   if (tab === "lighting") { renderDevice("l-"); renderLighting(); }
   if (tab === "settings") renderSettings();
@@ -2388,6 +2421,19 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
 }));
 $("connect").addEventListener("click", connect);
 $("bannerBtn").addEventListener("click", connect);
+$("disconnectBtn").addEventListener("click", async () => {
+  if (dev) {
+    try { await dev.close(); } catch {}
+    detach();
+  }
+});
+$("themeBtn").addEventListener("click", toggleTheme);
+initTheme();
+try {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (!localStorage.getItem("wildpad-theme")) updateThemeIcon();
+  });
+} catch {}
 $("undo").addEventListener("click", undo);
 $("redo").addEventListener("click", redo);
 $("addCombo").addEventListener("click", () => addCombo());
