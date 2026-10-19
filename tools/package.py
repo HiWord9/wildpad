@@ -24,9 +24,8 @@ def version():
 
 def site(out, fw, ver):
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copy(ROOT / "tools" / "configurator.html", out / "index.html")
+    shutil.copytree(ROOT / "web", out, dirs_exist_ok=True)
     shutil.copy(fw, out / "wildpad.bin")
-    shutil.copy(ROOT / "tools" / "60-wildpad.rules", out / "60-wildpad.rules")
     (out / "docs").mkdir(exist_ok=True)
     shutil.copy(ROOT / "docs" / "r12_short.jpeg", out / "docs" / "r12_short.jpeg")
     (out / "version.json").write_text(json.dumps({"firmware": ver}))
@@ -53,8 +52,11 @@ def main():
         ROOT / "LICENSE": "LICENSE",
         ROOT / "firmware" / "LICENSE": "firmware/LICENSE",
     }
-    for name in ("flash.py", "winusb.py", "wildpad.py", "configurator.html", "find_python.cmd", "60-wildpad.rules"):
+    for name in ("flash.py", "winusb.py", "wildpad.py", "find_python.cmd"):
         files[ROOT / "tools" / name] = f"tools/{name}"
+    for f in (ROOT / "web").rglob("*"):
+        if f.is_file():
+            files[f] = f.relative_to(ROOT).as_posix()
     for doc in (ROOT / "docs").iterdir():
         files[doc] = f"docs/{doc.name}"
 

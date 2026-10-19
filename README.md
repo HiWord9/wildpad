@@ -104,12 +104,12 @@ install and updates run from the page. On **Linux** the browser may use the pad 
 after an udev rule is installed once:
 
 ```
-sudo cp tools/60-wildpad.rules /etc/udev/rules.d/
+sudo cp web/60-wildpad.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
 Serve the page with `python3 -m http.server 8765` in the Wildpad folder and open
-`http://127.0.0.1:8765/tools/configurator.html`. The command-line tools need
+`http://127.0.0.1:8765/web/`. The command-line tools need
 `pip install hidapi pyusb`.
 
 ## Factory settings
@@ -188,7 +188,7 @@ pad fits 2 profiles, the 3-key pad 3. See [docs/porting.md](docs/porting.md).
 | `firmware/src/main.c` | Action engine: profiles, combos, long press, knob step queue, gamepad report, lights, configuration protocol |
 | `firmware/src/usbdev.c`, `descr.c` | USB device with three layouts: keyboard; keyboard + gamepad; update mode |
 | `firmware/src/settings.c` | Settings in the 128-byte Data-Flash, factory settings |
-| `tools/configurator.html` | Setup page (WebHID) |
+| `web/` | Setup page (WebHID) |
 | `tools/flash.py`, `winusb.py` | Flasher (update mode, or the chip's bootloader through WinUSB or libusb-win32) |
 | `tools/wildpad.py` | Command-line tool |
 

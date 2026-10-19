@@ -7,9 +7,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Configurator: http://127.0.0.1:8765/tools/configurator.html
+echo Configurator: http://127.0.0.1:8765/web/
 echo Keep this window open while you set up the pad. Close it when done.
-start "" "http://127.0.0.1:8765/tools/configurator.html"
+start "" "http://127.0.0.1:8765/web/"
 "%PY%" -m http.server 8765 --bind 127.0.0.1 --directory .
 if errorlevel 1 (
   echo.
