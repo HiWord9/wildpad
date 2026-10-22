@@ -5,3 +5,4 @@ dist/
 release/
 tools/zadig*.exe
 firmware/wildpad.bin
+.ci/

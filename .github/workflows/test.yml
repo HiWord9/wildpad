@@ -1,5 +1,7 @@
 name: test
 
+# Every push to dev or main and every pull request: build the firmware and run all
+# tests (tools/ci.sh).
 on:
   push:
     branches: [main, dev]
@@ -13,18 +15,5 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install SDCC 4.5
-        run: |
-          curl -fsSL -o sdcc.tar.bz2 \
-            https://downloads.sourceforge.net/project/sdcc/sdcc-linux-amd64/4.5.0/sdcc-4.5.0-amd64-unknown-linux2.5.tar.bz2
-          echo "3395722e3f8a31ce6a14c75fc419f586a3573b939f85efee5c88cdd35820a240  sdcc.tar.bz2" | sha256sum -c -
-          tar xjf sdcc.tar.bz2
-          echo "$PWD/sdcc-4.5.0/bin" >> "$GITHUB_PATH"
-
-      - name: Build
-        run: python3 firmware/build.py
-      - name: Descriptor checks
-        run: python3 firmware/test/check_descriptors.py
-      - name: Simulator tests
-        run: python3 firmware/test/run_tests.py
+      - name: Build and test
+        run: bash tools/ci.sh

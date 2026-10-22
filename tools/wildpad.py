@@ -164,7 +164,10 @@ def parse_action(text):
             x, _, y = arg.partition(",")
             return (ACT_MOUSE_MOVE, _int8(x or 0), _int8(y or 0))
         if kind == "pad":
-            return (ACT_PAD_BTN, PAD_NAMES.index(arg), 0)
+            n = PAD_NAMES.index(arg)
+            if not n:
+                raise ActionError("which gamepad button? see 'wildpad.py actions'")
+            return (ACT_PAD_BTN, n, 0)
         if kind == "axis":
             parts = arg.split(":")
             clicks = int(parts[1]) if len(parts) > 1 else 10
@@ -178,6 +181,8 @@ def parse_action(text):
             p = {"next": PROF_NEXT, "prev": PROF_PREV}.get(target)
             if p is None:
                 p = int(target) - 1
+                if not 0 <= p < 3:
+                    raise ActionError("profiles are 1..3, next or prev")
             return (ACT_PROFILE, p, 1 if mode == "hold" else 0)
         if kind == "light":
             return (ACT_LIGHT, LIGHT_NAMES.index(arg), 0)
@@ -389,7 +394,7 @@ class Settings:
             out = []
             for op, x in lst:
                 if op == "wait":
-                    n = max(1, round(x / 20))
+                    n = max(1, int(x / 20 + 0.5))      # halves round up, as on the setup page
                     while n > 0:
                         out.append(ST_WAIT | min(31, n))
                         n -= 31
@@ -435,6 +440,8 @@ class Settings:
                 continue
             op, _, arg = part.partition(" ")
             if op == "wait":
+                if not re.fullmatch(r"\d+", arg):
+                    raise ActionError(f"cannot understand step '{part}'")
                 ms = int(arg)
                 if not 20 <= ms <= 10000:
                     raise ActionError("a wait must be 20..10000 ms")

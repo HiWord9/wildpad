@@ -1,0 +1,64 @@
+{
+  "about": "Action text both the setup page (web/js/protocol.js) and wildpad.py must read the same way. action = [type, p1, p2] as stored on the pad; bytes = the stored steps of a sequence.",
+  "canonical": [
+    ["none", [0, 0, 0]],
+    ["key:ctrl+c", [1, 1, 6]],
+    ["key:ctrl+shift+esc", [1, 3, 41]],
+    ["key:alt", [1, 4, 0]],
+    ["key:win+d", [1, 8, 7]],
+    ["key:rctrl+ralt+f13", [1, 80, 104]],
+    ["key:f24", [1, 0, 115]],
+    ["key:kp0", [1, 0, 98]],
+    ["key:kp-enter", [1, 0, 88]],
+    ["key:0x87", [1, 0, 135]],
+    ["media:mute", [2, 226, 0]],
+    ["media:calculator", [2, 146, 1]],
+    ["media:0x0e3", [2, 227, 0]],
+    ["mouse:left", [3, 1, 0]],
+    ["mouse:forward", [3, 16, 0]],
+    ["scroll:1", [4, 1, 0]],
+    ["scroll:-1", [4, 255, 0]],
+    ["scroll:0,-3", [4, 0, 253]],
+    ["scroll:2,5", [4, 2, 5]],
+    ["move:10,-10", [5, 10, 246]],
+    ["move:-127,127", [5, 129, 127]],
+    ["pad:a", [6, 1, 0]],
+    ["pad:guide", [6, 17, 0]],
+    ["axis:lx:10", [7, 0, 10]],
+    ["axis:triggers:25:free", [7, 132, 25]],
+    ["center", [8, 0, 0]],
+    ["profile:1", [9, 0, 0]],
+    ["profile:3:hold", [9, 2, 1]],
+    ["profile:next", [9, 240, 0]],
+    ["profile:prev:hold", [9, 241, 1]],
+    ["light:toggle", [10, 0, 0]],
+    ["light:dimmer", [10, 2, 0]]
+  ],
+  "aliases": [
+    ["", [0, 0, 0]],
+    ["  KEY:Ctrl+C ", [1, 1, 6]],
+    ["key:c+ctrl", [1, 1, 6]],
+    ["media:0xe2", [2, 226, 0]],
+    ["axis:ly", [7, 1, 10]],
+    ["scroll:,2", [4, 0, 2]],
+    ["move:5", [5, 5, 0]]
+  ],
+  "invalid": [
+    "key:", "key:foo", "key:ctrl+c:bogus", "media:loud", "mouse:side", "pad:", "pad:z",
+    "scroll:128", "scroll:abc", "move:0,-128", "axis:zz", "axis:lx:0", "axis:lx:101",
+    "axis:lx:abc", "profile:0", "profile:4", "profile:x", "light:blink", "wobble:1"
+  ],
+  "sequences": [
+    ["seq:tap key:a", [1, 0, 4]],
+    ["seq:tap pad:a; wait 60; tap pad:a; hold pad:rt", [6, 1, 0, 67, 6, 1, 0, 38, 8, 0]],
+    ["seq:hold key:alt; tap key:tab; on release; tap key:esc", [33, 4, 0, 1, 0, 43, 96, 1, 0, 41]],
+    ["seq:tap key:a; wait 50", [1, 0, 4, 67]],
+    ["seq:wait 700", [95, 68]],
+    ["key:alt+tab:hold", [33, 4, 0, 1, 0, 43]],
+    ["key:ctrl+shift+tab:hold", [33, 1, 0, 1, 2, 43]]
+  ],
+  "invalid_sequences": [
+    "seq:tap seq:tap key:a", "seq:hold key:a; on release; hold key:b", "seq:wait 5",
+    "seq:wait 20000", "seq:wait soon", "seq:jump key:a"
+  ]
+}

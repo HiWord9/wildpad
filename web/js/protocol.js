@@ -166,7 +166,10 @@ function textToSeq(text) {
     if (!t) continue;
     if (t === "on release") { list = sq.release; continue; }
     const [op, ...rest] = t.split(/\s+/), arg = rest.join(" ");
-    if (op === "wait") list.push({ op: "wait", ms: Math.max(20, Math.min(10000, Math.round((+arg || 0) / 20) * 20)) });
+    if (op === "wait") {
+      if (!/^\d+$/.test(arg) || +arg < 20 || +arg > 10000) throw new Error("a wait must be 20..10000 ms");
+      list.push({ op: "wait", ms: Math.round(+arg / 20) * 20 });
+    }
     else if (op === "tap" || (op === "hold" && list === sq.press)) {
       const a = textToAction(arg);
       if (a.t === T.SEQ) throw new Error("a sequence can't contain another sequence");
@@ -182,6 +185,7 @@ function textToAction(text, m = model) {
   if (t.startsWith("seq:")) return A(T.SEQ, m.addSeq(textToSeq(t.slice(4))));
   const i = t.indexOf(":"), kind = i < 0 ? t : t.slice(0, i), arg = i < 0 ? "" : t.slice(i + 1);
   const bad = () => { throw new Error(`cannot understand action "${text}"`); };
+  const int8 = v => v === undefined || v === "" ? 0 : /^[+-]?\d+$/.test(v) && Math.abs(+v) <= 127 ? u8(+v) : bad();
   switch (kind) {
     case "": case "none": return A(T.NONE);
     case "key": {
@@ -199,12 +203,16 @@ function textToAction(text, m = model) {
     }
     case "media": { const m = MEDIA.find(x => x[3] === arg); const u = m ? m[0] : parseInt(arg); if (isNaN(u)) bad(); return A(T.MEDIA, u & 255, u >> 8); }
     case "mouse": { const m = MOUSE.find(x => x[2] === arg); if (!m) bad(); return A(T.MOUSE, m[0]); }
-    case "scroll": { const [v, h] = arg.split(","); return A(T.SCROLL, u8(+v || 0), u8(+h || 0)); }
-    case "move": { const [x, y] = arg.split(","); return A(T.MOVE, u8(+x || 0), u8(+y || 0)); }
+    case "scroll": { const [v, h] = arg.split(","); return A(T.SCROLL, int8(v), int8(h)); }
+    case "move": { const [x, y] = arg.split(","); return A(T.MOVE, int8(x), int8(y)); }
     case "pad": { const n = PAD.findIndex(x => x && x[1] === arg); if (n < 1) bad(); return A(T.PAD, n); }
-    case "axis": { const p = arg.split(":"); const ax = AXES.findIndex(x => x[0] === p[0]); if (ax < 0) bad(); return A(T.AXIS, ax | (p.includes("free") ? AXIS_FREE : 0), Math.max(1, Math.min(100, +p[1] || 10))); }
+    case "axis": {
+      const p = arg.split(":"), ax = AXES.findIndex(x => x[0] === p[0]), clicks = p.length > 1 ? +p[1] : 10;
+      if (ax < 0 || !Number.isInteger(clicks) || clicks < 1 || clicks > 100) bad();
+      return A(T.AXIS, ax | (p.includes("free") ? AXIS_FREE : 0), clicks);
+    }
     case "center": return A(T.CENTER);
-    case "profile": { const [target, mode] = arg.split(":"); const p = target === "next" ? PROF_NEXT : target === "prev" ? PROF_PREV : (+target - 1); if (isNaN(p)) bad(); return A(T.PROFILE, p, mode === "hold" ? 1 : 0); }
+    case "profile": { const [target, mode] = arg.split(":"); const p = target === "next" ? PROF_NEXT : target === "prev" ? PROF_PREV : (+target - 1); if (p !== PROF_NEXT && p !== PROF_PREV && !(Number.isInteger(p) && p >= 0 && p < 3)) bad(); return A(T.PROFILE, p, mode === "hold" ? 1 : 0); }
     case "light": { const n = LIGHTS.findIndex(x => x[0] === arg); if (n < 0) bad(); return A(T.LIGHT, n); }
   }
   bad();
