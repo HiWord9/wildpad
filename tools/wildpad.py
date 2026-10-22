@@ -35,7 +35,7 @@ sent right away and everything else on release.
 Changes are saved on the device right away. The device reconnects by itself when
 the gamepad has to be added or removed.
 
-Requires:  pip install hidapi
+Requires:  pip install hidapi  (or pip install -r requirements.txt)
 """
 import json
 import re
@@ -546,10 +546,7 @@ class Device:
         try:
             import hid
         except ImportError:
-            import subprocess
-            print("Installing hidapi ...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "hidapi"])
-            import hid
+            sys.exit(f'Missing module hidapi: "{sys.executable}" -m pip install hidapi')
         path = next((d["path"] for d in hid.enumerate(VID, PID) if d.get("usage_page") == USAGE_PAGE), None)
         if path is None:
             sys.exit("No Wildpad macropad found. Is it plugged in and running the Wildpad firmware?")

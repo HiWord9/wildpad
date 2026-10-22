@@ -110,7 +110,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 Serve the page with `python3 -m http.server 8765` in the Wildpad folder and open
 `http://127.0.0.1:8765/web/`. The command-line tools need
-`pip install hidapi pyusb`.
+`pip install -r requirements.txt` (hidapi, pyusb).
 
 ## Factory settings
 

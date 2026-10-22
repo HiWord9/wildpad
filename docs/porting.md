@@ -30,5 +30,5 @@ board routes to it (R12 on the 3-key board). Once Wildpad runs, holding key 1 wh
 plugging in, or `flash.bat`, enters the bootloader.
 
 To add a board to the known ones, add its map to `BOARDS` in `settings.c` and to
-`BOARDS` in `web/` and `tools/wildpad.py`. Pull requests with new
+`BOARDS` in `web/js/protocol.js` and `tools/wildpad.py`. Pull requests with new
 boards are welcome; please include a photo of the PCB and the pin mapping.

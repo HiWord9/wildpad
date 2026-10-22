@@ -135,6 +135,7 @@ function detach() {
 function setSync(state, text) {
   const dot = $("dot"), label = $("connText");
   dot.className = "dot" + (state === "saved" ? " on" : state === "busy" ? " busy" : "");
+  $("disconnectBtn").disabled = state === "busy";        // not while changes are on their way
   label.textContent = text || (state === "saved" ? "Connected · saved on the pad" : state === "busy" ? "Saving…" : reconnecting ? "Reconnecting…" : "Demo");
 }
 

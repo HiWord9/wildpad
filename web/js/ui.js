@@ -99,8 +99,8 @@ function renderBanner() {
   b.classList.remove("hidden");
   if (!("hid" in navigator)) {
     t.textContent = location.protocol === "file:"
-      ? "The page was opened as a file. WebHID needs HTTPS or localhost: run configure.bat, or open the page from the project\u2019s website. You can still look around: this is a demo."
-      : "This browser can\u2019t talk to USB devices. Open this page in Chrome, Edge or Opera on a computer. You can still look around: this is a demo.";
+      ? "The page was opened as a file. WebHID needs HTTPS or localhost: run configure.bat, or open the page from the project's website. You can still look around: this is a demo."
+      : "This browser can't talk to USB devices. Open this page in Chrome, Edge or Opera on a computer. You can still look around: this is a demo.";
     btn.classList.add("hidden");
   } else if (reconnecting) {
     t.textContent = "The pad is reconnecting…"; btn.classList.add("hidden");
@@ -668,7 +668,7 @@ function renderSettings() {
 const BOOT_VID = 0x4348, BOOT_PID = 0x55E0, CODE_SIZE = 14336;
 const FW_URLS = ["wildpad.bin", "../firmware/wildpad.bin", "../firmware/build/wildpad.bin"];
 // The page runs from the download (web/) or as the website's index
-const DOCS = location.pathname.includes("/web/") || location.pathname.includes("/tools/") ? "../docs/" : "docs/";
+const DOCS = location.pathname.includes("/web/") ? "../docs/" : "docs/";
 const DETECT = [0xA1, 0x12, 0x00, 0x52, 0x11, 0x4D, 0x43, 0x55, 0x20, 0x49, 0x53, 0x50, 0x20, 0x26, 0x20, 0x57, 0x43, 0x48, 0x2E, 0x43, 0x4E];
 let fwImage = null, updating = false;
 

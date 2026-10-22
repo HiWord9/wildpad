@@ -3,7 +3,7 @@
 // ===================================================================================
 // This block is exchanged byte for byte with the configurator, so its layout is part
 // of the configuration protocol (docs/protocol.md). Keep tools/wildpad.py and
-// web/ in sync when changing it, and bump SETTINGS_VERSION.
+// web/js/ in sync when changing it, and bump SETTINGS_VERSION.
 //
 // Inputs are numbered: buttons 0 .. nButtons-1, then knob right, knob left (boards
 // with a knob). Every profile maps each input to one action. After the profiles comes
