@@ -162,6 +162,8 @@ winget install SDCC.SDCC                  # SDCC 4.5 (see below)
 python firmware/build.py                  # -> firmware/build/wildpad.bin
 python firmware/test/run_tests.py         # tests in the s51 8051 simulator
 python firmware/test/check_descriptors.py # USB descriptor checks on the binary
+python test/test_actions.py               # action text, as test/actions.json says
+python test/test_web.py                   # the setup page in Chrome (test/requirements.txt)
 ```
 
 The tests run the real firmware sources in a simulator with the USB layer stubbed
@@ -169,8 +171,28 @@ out: knob decoding (slow, fast, bounce, reversals), every click becoming exactly
 press and release, combos with keys and the knob, long press, profile switching and
 the gamepad axis, multi-step actions, app switchers and a 6-key board. The firmware
 fills the 14 KB of code flash almost completely and is sized for SDCC 4.5; older
-versions may not fit it (on Linux, use the 4.5 release archive like the release
-workflow does). `build.py` works around a packaging bug of SDCC 4.5 on Windows.
+versions may not fit it. On Linux, `bash tools/ci.sh` fetches SDCC 4.5 and runs all
+of the above, as GitHub does for every push. `build.py` works around a packaging bug
+of SDCC 4.5 on Windows.
+
+`test/actions.json` lists action text with what it must turn into. The setup page and
+`wildpad.py` both read it in the tests, and the page test also compares every key name
+and the settings file of every board between the two, so they can't drift apart.
+
+## Releases
+
+A release (tag `vMAJOR.MINOR.PATCH`) is Wildpad as a whole: firmware, setup page and
+tools. Publishing one on GitHub builds and tests everything, attaches the zip and
+updates the website; a pre-release only gets the zip. The firmware has its own
+version (`FW_MAJOR/MINOR/PATCH` in `firmware/src/config.h`) that only changes when the
+firmware does, so a release that only improves the page keeps it and nobody needs to
+re-flash. The release workflow builds the previous release's firmware, stops if the
+firmware changed but its version didn't, and starts the release notes with the firmware
+version, noting when it is the same as before.
+
+- Patch (0.1.**1**): fixes and small changes to the page or the tools.
+- Minor (0.**2**.0): new features.
+- Major: for 1.0, then for changes that break settings files or older pads.
 
 ## Boards
 
@@ -191,6 +213,7 @@ pad fits 2 profiles, the 3-key pad 3. See [docs/porting.md](docs/porting.md).
 | `web/` | Setup page (WebHID) |
 | `tools/flash.py`, `winusb.py` | Flasher (update mode, or the chip's bootloader through WinUSB or libusb-win32) |
 | `tools/wildpad.py` | Command-line tool |
+| `test/`, `tools/ci.sh` | Action text and setup page tests; everything GitHub runs on each push |
 
 With a gamepad action the pad is a composite USB device: a HID keyboard/mouse, a vendor
 HID interface for configuration and live state, and an XInput interface. A Microsoft
