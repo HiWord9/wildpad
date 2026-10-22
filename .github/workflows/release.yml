@@ -4,9 +4,10 @@ name: release
 # attaches the zip to the release and puts the setup page with that firmware on
 # GitHub Pages. Pre-releases get the zip but leave the website alone.
 #
-# The tag (vMAJOR.MINOR.PATCH) is the version of Wildpad as a whole. The firmware
-# keeps its own version in firmware/src/config.h, raised only when the firmware
-# changes; the release notes get a line saying which firmware the release carries.
+# The tag starts with the firmware version (firmware/src/config.h): v0.2.0 brings
+# firmware 0.2.0, v0.2.0.1 keeps it and brings a newer page or tools. The build
+# checks that against the previous release (tools/package.py --notes), and the
+# release notes get a line saying which firmware the release carries.
 on:
   release:
     types: [published]

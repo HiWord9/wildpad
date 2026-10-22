@@ -181,18 +181,28 @@ and the settings file of every board between the two, so they can't drift apart.
 
 ## Releases
 
-A release (tag `vMAJOR.MINOR.PATCH`) is Wildpad as a whole: firmware, setup page and
-tools. Publishing one on GitHub builds and tests everything, attaches the zip and
-updates the website; a pre-release only gets the zip. The firmware has its own
-version (`FW_MAJOR/MINOR/PATCH` in `firmware/src/config.h`) that only changes when the
-firmware does, so a release that only improves the page keeps it and nobody needs to
-re-flash. The release workflow builds the previous release's firmware, stops if the
-firmware changed but its version didn't, and starts the release notes with the firmware
-version, noting when it is the same as before.
+A release tag starts with the firmware version it carries (`FW_MAJOR/MINOR/PATCH` in
+`firmware/src/config.h`); a fourth number counts releases that keep that firmware
+and only bring a newer setup page or tools:
 
-- Patch (0.1.**1**): fixes and small changes to the page or the tools.
-- Minor (0.**2**.0): new features.
-- Major: for 1.0, then for changes that break settings files or older pads.
+| Tag | Firmware | What changed |
+|---|---|---|
+| `v0.2.0` | 0.2.0 | new firmware |
+| `v0.2.0.1` | 0.2.0 | setup page or tools; no need to update the pad |
+| `v0.2.0.2` | 0.2.0 | setup page or tools again |
+| `v0.2.1` | 0.2.1 | new firmware |
+| `v0.3.0-beta.1` | 0.3.0 | pre-release for testing |
+
+The firmware version follows the usual rules: patch (0.2.**1**) for fixes, minor
+(0.**3**.0) for new features, major for 1.0 and later for changes that break settings
+files or older pads.
+
+Publishing a release on GitHub builds and tests everything, attaches the zip and
+updates the website; a pre-release only gets the zip. The release workflow checks
+the tag: the first three numbers must be the firmware version, and it builds the
+previous release's firmware to compare: a changed firmware needs a new version, an
+unchanged one needs the fourth number. The release notes start with a line saying
+which firmware the release carries and whether it is new.
 
 ## Boards
 

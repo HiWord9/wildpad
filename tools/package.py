@@ -1,20 +1,20 @@
 """Release files. Run firmware/build.py first.
 
-  python tools/package.py [--release vX.Y.Z]
-        dist/wildpad-X.Y.Z.zip (wildpad-dev.zip without --release): firmware,
+  python tools/package.py [--release TAG]
+        dist/wildpad-VERSION.zip (wildpad-dev.zip without --release): firmware,
         flasher, setup page, command-line tool, launchers, docs
-  python tools/package.py --site DIR [--release vX.Y.Z]
+  python tools/package.py --site DIR [--release TAG]
         the website (GitHub Pages): the setup page next to the firmware it installs
-  python tools/package.py --notes vX.Y.Z
-        builds the previous release's firmware and compares it with this one (built
-        first): stops if they differ but carry the same version, otherwise prints the
-        line the release notes get about the firmware
+  python tools/package.py --notes TAG
+        checks the tag against the firmware (built first) and the previous release,
+        and prints the line the release notes get about the firmware
   python tools/package.py --version
         print the firmware version
 
-A release (tag vX.Y.Z) is Wildpad as a whole. The firmware has its own version,
-FW_MAJOR/MINOR/PATCH in firmware/src/config.h, that changes only when the firmware
-does, so a release that only changes the setup page or the tools leaves it alone.
+Release tags start with the firmware version (FW_MAJOR/MINOR/PATCH in
+firmware/src/config.h): v0.2.0 is the first release with firmware 0.2.0. A fourth
+number marks a release with the same firmware and a newer setup page or tools:
+v0.2.0.1, v0.2.0.2, ... Pre-releases add a suffix: v0.3.0-beta.1.
 """
 import json
 import os
@@ -26,7 +26,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TAG = re.compile(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
+TAG = re.compile(r"v((\d+\.\d+\.\d+)(?:\.(\d+))?(?:-[0-9A-Za-z.-]+)?)")   # version, firmware, revision
 
 
 def version(cfg=None):
@@ -35,11 +35,15 @@ def version(cfg=None):
     return ".".join(parts)
 
 
-def release_version(tag):
+def parse_tag(tag):
     m = TAG.fullmatch(tag)
-    if not m:
-        sys.exit(f"release tag {tag!r} isn't vMAJOR.MINOR.PATCH, e.g. v0.2.0 or v0.2.0-beta.1")
-    return m[1]
+    if not m or (m[3] or "").startswith("0"):              # the fourth number counts from 1
+        sys.exit(f"release tag {tag!r} isn't vFIRMWARE or vFIRMWARE.N, e.g. v0.2.0, v0.2.0.1 or v0.3.0-beta.1")
+    return m
+
+
+def release_version(tag):
+    return parse_tag(tag)[1]
 
 
 def drop_tree(tree):
@@ -60,11 +64,16 @@ def git(*args):
 
 
 def notes(tag, fw_bin):
-    """The firmware line of the release notes. Two different firmwares never carry the
-    same version: the previous release is built and compared byte for byte."""
-    release_version(tag)
-    fw = version()
-    prev = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", f"{tag}^").stdout.strip()
+    """The firmware line of the release notes. The tag must name the firmware it
+    carries, and two different firmwares never carry the same version: the previous
+    release is built and compared byte for byte."""
+    m = parse_tag(tag)
+    fw, revision = version(), m[3]
+    if m[2] != fw:
+        sys.exit(f"{tag} names firmware {m[2]}, but firmware/src/config.h says {fw}: "
+                 f"tag it v{fw} (new firmware) or v{fw}.N (same firmware, newer page or tools)")
+    prev = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "--exclude", "v*-*",   # not pre-releases
+               f"{tag}^").stdout.strip()
     if not prev:
         return f"**Firmware {fw}**"
     tree = ROOT / ".ci" / "previous"
@@ -80,8 +89,15 @@ def notes(tag, fw_bin):
         drop_tree(tree)
     if not same and fw == prev_fw:
         sys.exit(f"the firmware changed since {prev} but its version is still {fw}: "
-                 "raise FW_MAJOR/MINOR/PATCH in firmware/src/config.h")
-    return f"**Firmware {fw}**" + (f" (the same as in {prev})" if same else "")
+                 "raise FW_MAJOR/MINOR/PATCH in firmware/src/config.h and tag the new version")
+    if revision is None and same:
+        sys.exit(f"the firmware is the same as in {prev}: tag this release v{fw}.N, "
+                 "or raise the firmware version if it should be a new one")
+    if revision is not None and not same:
+        sys.exit(f"{tag} says the firmware is unchanged, but it differs from {prev}")
+    if same:
+        return f"**Firmware {fw}**, the same as in {prev}: no need to update the pad."
+    return f"**Firmware {fw}** (new)"
 
 
 def site(out, fw, ver, release):
