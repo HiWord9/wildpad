@@ -133,7 +133,6 @@ def main():
         ROOT / "requirements.txt": "requirements.txt",
         ROOT / "README.md": "README.md",
         ROOT / "LICENSE": "LICENSE",
-        ROOT / "firmware" / "LICENSE": "firmware/LICENSE",
     }
     for name in ("flash.py", "winusb.py", "wildpad.py", "find_python.cmd"):
         files[ROOT / "tools" / name] = f"tools/{name}"

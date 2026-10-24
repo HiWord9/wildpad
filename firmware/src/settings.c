@@ -2,7 +2,7 @@
 // Persistent settings (CH552 Data-Flash, 128 bytes)
 // ===================================================================================
 
-#include "ch554.h"
+#include "sys.h"
 #include "settings.h"
 
 __xdata uint8_t cfg[SETTINGS_SIZE];
@@ -275,32 +275,20 @@ void SET_load(void) {
 void SET_save(void) {
   uint8_t i;
   cfg[S_CHECKSUM] = SET_checksum(cfg);
-  SAFE_MOD = 0x55;
-  SAFE_MOD = 0xAA;
-  GLOBAL_CFG |= bDATA_WE;
-  SAFE_MOD = 0x00;
+  SYS_config(bDATA_WE, 0);
   for(i = 0; i < SETTINGS_SIZE; i++) {
     if(DF_read(i) != cfg[i]) DF_write(i, cfg[i]);   // spare write cycles
   }
-  SAFE_MOD = 0x55;
-  SAFE_MOD = 0xAA;
-  GLOBAL_CFG &= ~bDATA_WE;
-  SAFE_MOD = 0x00;
+  SYS_config(0, bDATA_WE);
 }
 
 // Store one byte without saving the rest of the live settings: the stored checksum
 // is recomputed from the stored bytes.
 void SET_saveByte(uint8_t idx, uint8_t val) {
   uint8_t i, sum = 0;
-  SAFE_MOD = 0x55;
-  SAFE_MOD = 0xAA;
-  GLOBAL_CFG |= bDATA_WE;
-  SAFE_MOD = 0x00;
+  SYS_config(bDATA_WE, 0);
   if(DF_read(idx) != val) DF_write(idx, val);
   for(i = 0; i < SETTINGS_SIZE - 1; i++) sum += DF_read(i);
   if(DF_read(S_CHECKSUM) != sum) DF_write(S_CHECKSUM, sum);
-  SAFE_MOD = 0x55;
-  SAFE_MOD = 0xAA;
-  GLOBAL_CFG &= ~bDATA_WE;
-  SAFE_MOD = 0x00;
+  SYS_config(0, bDATA_WE);
 }

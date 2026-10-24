@@ -13,7 +13,7 @@ board is a setting, not a build option:
 
 What every board must share: the knob's A/B phases on P3.1/P3.0, WS2812 lights on
 P3.4, up to 8 buttons (keys plus the knob switch) on P1 or P3, pressed = low. A pad
-wired differently needs a change in `config.h` (`ENC_PORT_STATE()`, `PIN_NEO`).
+wired differently needs a change in `config.h` (`ENC_PORT_STATE()`, `LED_PIN`).
 
 The memory for actions follows the number of keys: every input takes 3 bytes in each
 profile, so a 6-key pad fits 2 profiles where the 3-key pad fits 3. Unused profiles

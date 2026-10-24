@@ -17,8 +17,7 @@
 // One firmware runs every supported CH552 "keys + knob" pad; the board and its key
 // pins come from the settings (BOARDS table in settings.c, or a stored pin map). What
 // all of them share is fixed here.
-#define PIN_NEO             P34         // WS2812 chain (GRB)
-#define NEO_GRB
+#define LED_PIN             4           // WS2812 chain (GRB) on P3.4
 
 // Encoder phases sampled in the timer ISR: state = (A << 1) | B, A = P3.1, B = P3.0
 #define ENC_PORT_STATE()    (P3 & 0x03)

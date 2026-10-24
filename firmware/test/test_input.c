@@ -2,7 +2,7 @@
 // Port 3 bits 0/1 are driven by writing the P3 latch (the simulator has no external
 // load, so reading P3 returns the latch). Timer2 interrupts run for real.
 
-#include "ch554.h"
+#include "ch552.h"
 #include "input.h"
 
 volatile uint8_t USB_stallTicks;                  // read by the timer interrupt

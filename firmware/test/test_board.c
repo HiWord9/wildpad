@@ -6,7 +6,7 @@
 //   key 4 in profile 2 -> Ctrl+X
 
 #pragma nooverlay
-#include "ch554.h"
+#include "ch552.h"
 #include "input.h"
 #include "usbdev.h"
 #include "settings.h"

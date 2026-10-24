@@ -9,7 +9,7 @@
 //  hold key 3 + 2 CW clicks -> 'b' 'b', stick stays centered, no 'a'
 //  short key 3 -> 'a';  long key 1 -> 'c', no RT
 
-#include "ch554.h"
+#include "ch552.h"
 #include "input.h"
 #include "usbdev.h"
 #include "settings.h"

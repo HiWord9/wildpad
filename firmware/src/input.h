@@ -8,7 +8,7 @@
 
 #pragma once
 #include <stdint.h>
-#include "ch554.h"
+#include "ch552.h"
 
 void INP_init(void);
 int16_t INP_position(void);       // absolute knob position in detents (atomic read)

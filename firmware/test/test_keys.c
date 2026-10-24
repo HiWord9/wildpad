@@ -8,7 +8,7 @@
 // USB is replaced by stubs that log every report. Timer0 plays the user.
 
 #pragma nooverlay                             // turnCW() is called from the timer ISR
-#include "ch554.h"
+#include "ch552.h"
 #include "input.h"
 #include "usbdev.h"
 #include "settings.h"

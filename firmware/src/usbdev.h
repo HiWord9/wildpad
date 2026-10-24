@@ -3,7 +3,7 @@
 // ===================================================================================
 #pragma once
 #include <stdint.h>
-#include "ch554.h"
+#include "ch552.h"
 #include "descr.h"
 
 // Device layouts (see descr.h)

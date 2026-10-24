@@ -6,7 +6,7 @@
 // Expected gamepad reports: A, -, A, -, RT held, released; then keyboard 'x' tapped.
 
 #pragma nooverlay
-#include "ch554.h"
+#include "ch552.h"
 #include "input.h"
 #include "usbdev.h"
 #include "settings.h"

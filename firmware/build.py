@@ -24,8 +24,7 @@ SOURCES = [
     ROOT / "src" / "descr.c",
     ROOT / "src" / "input.c",
     ROOT / "src" / "settings.c",
-    ROOT / "include" / "delay.c",
-    ROOT / "include" / "neo.c",
+    ROOT / "src" / "sys.c",
 ]
 
 
@@ -100,7 +99,7 @@ def main():
     cflags = ["-mmcs51", "--model-small", "--no-xinit-opt", "--opt-code-size", "--max-allocs-per-node", "50000",
               "--xram-size", str(XRAM_SIZE), "--xram-loc", str(XRAM_LOC),
               "--code-size", str(CODE_SIZE),
-              "-I", str(ROOT / "src"), "-I", str(ROOT / "include"),
+              "-I", str(ROOT / "src"),
               f"-DFREQ_SYS={FREQ_SYS}"]
     rels = []
     for src in SOURCES:

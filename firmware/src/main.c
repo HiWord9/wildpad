@@ -1,7 +1,7 @@
 // ===================================================================================
 // Wildpad - firmware for CH552 "keys + knob" macropads
 // ===================================================================================
-// Built on wagiminator's CH55x support code (CC BY-SA 3.0). Features:
+// Features:
 //  - quadrature decoded in a 4 kHz timer interrupt -> no lost or reversed steps
 //  - every key and both knob directions can send keyboard keys, media keys, mouse
 //    buttons / scrolling / movement, gamepad buttons, or turn the knob into an
@@ -17,12 +17,8 @@
 //
 // Plug in holding key 1 (button BOOT_BUTTON) -> USB bootloader
 
-#include "ch554.h"
 #include "config.h"
-#include "system.h"
-#include "delay.h"
-#include "gpio.h"
-#include "neo.h"
+#include "sys.h"
 #include "settings.h"
 #include "input.h"
 #include "usbdev.h"
@@ -430,7 +426,7 @@ static void LED_task(void) {
   EA = 0;                                                      // WS2812 timing is strict
   for(i = 0; i < nLeds; i++) {
     o = rgb + (uint8_t)((ledReversed ? nLeds - 1 - i : i) * 3);
-    NEO_writeColor(o[0], o[1], o[2]);
+    WS_color(o[0], o[1], o[2]);
   }
   EA = 1;
 
@@ -1002,21 +998,18 @@ static void BRIGHT_task(void) {
 }
 
 static void reboot(void) {
-  DLY_ms(50);                                               // let the control transfer finish
+  SYS_delayMs(50);                                          // let the control transfer finish
   USB_disconnect();
-  DLY_ms(300);
-  RST_now();
-  while(1);
+  SYS_delayMs(300);
+  SYS_reset();
 }
 
-// Start the ROM bootloader; it gives up after ~10 s without a command. On Windows
-// that often fails: when WinUSB starts, it asks GET_STATUS, which the bootloader
-// stalls, and a bug in the ROM then often stalls the next request too
-// (SET_CONFIGURATION), so Windows doesn't start the driver (code 10). The update
-// layout below avoids that; this way stays for key 1 at plug-in and other ROMs.
-static void startBootloader(void) {
-  BOOT_now();
-}
+// SYS_bootloader() starts the ROM bootloader; it gives up after ~10 s without a
+// command. On Windows that often fails: when WinUSB starts, it asks GET_STATUS,
+// which the bootloader stalls, and a bug in the ROM then often stalls the next
+// request too (SET_CONFIGURATION), so Windows doesn't start the driver (code 10).
+// The update layout below avoids that; that way stays for key 1 at plug-in and
+// other ROMs.
 
 // -----------------------------------------------------------------------------------
 // Update layout: the firmware shows up as a bulk device like the ROM bootloader, with
@@ -1042,24 +1035,21 @@ static __bit romHas(__code uint8_t* at, __code uint8_t* pat, uint8_t n) {
 static void updateMode(void) {
   uint8_t i;
   if(!romHas((__code uint8_t*)ROM_LOOP_AT, ROM_LOOP, sizeof(ROM_LOOP)) ||
-     !romHas((__code uint8_t*)ROM_ID_AT, ROM_ID, sizeof(ROM_ID))) startBootloader();   // the usual way
+     !romHas((__code uint8_t*)ROM_ID_AT, ROM_ID, sizeof(ROM_ID))) SYS_bootloader();   // the usual way
   EA = 0;
-  for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
+  for(i = 0; i < nLeds; i++) WS_color(80, 80, 80);
   INP_init();
   USB_init(USB_UPDATE);
-  WDT_start();
+  SYS_wdtStart();
   now = INP_millis();
   while(!USB_updateGo) {
-    WDT_reset();
+    SYS_wdtFeed();
     if((uint16_t)(INP_millis() - now) > 15000) reboot();   // no flasher came
   }
-  DLY_ms(5);                                                // the request's status stage
+  SYS_delayMs(5);                                           // the request's status stage
   EA = 0;
-  WDT_stop();
-  SAFE_MOD = 0x55;                                          // the ROM's clock: 12 MHz
-  SAFE_MOD = 0xAA;
-  CLOCK_CFG = CLOCK_CFG & ~MASK_SYS_CK_SEL | 0x04;
-  SAFE_MOD = 0x00;
+  SYS_config(0, bWDOG_EN);
+  SYS_clock(CLK_12MHZ);                                     // the ROM's clock
   T2CON = 0; T2MOD = 0;                                     // timer 0 for its time-out
   TMOD = 0x01; TL0 = 0xC0; TH0 = 0x64; TF0 = 0; TR0 = 1;
   IE_USB = 0;                                               // its USB setup, polled
@@ -1097,15 +1087,14 @@ static void updateMode(void) {
 // plug-in.
 static void enterBootloader(void) {
   uint8_t i;
-  RST_keep(KEEP_BOOTLOADER + bootMode);                     // even a watchdog reset gets there
+  RESET_KEEP = KEEP_BOOTLOADER + bootMode;                  // even a watchdog reset gets there
   EA = 0;
-  for(i = 0; i < nLeds; i++) NEO_writeColor(80, 80, 80);
+  for(i = 0; i < nLeds; i++) WS_color(80, 80, 80);
   EA = 1;
-  DLY_ms(50);                                               // let the control transfer finish
+  SYS_delayMs(50);                                          // let the control transfer finish
   USB_disconnect();
-  DLY_ms(300);                                              // let the host see the unplug
-  RST_now();                                                // allowed: the watchdog is running
-  while(1);
+  SYS_delayMs(300);                                         // let the host see the unplug
+  SYS_reset();                                              // allowed: the watchdog is running
 }
 
 // ===================================================================================
@@ -1126,37 +1115,35 @@ void main(void) {
   uint8_t i;
 
 #ifndef TEST_HARNESS
-  i = RST_getKeep();
+  i = RESET_KEEP;
   if((i & 0xFE) == KEEP_BOOTLOADER) {                       // asked for the bootloader
-    RST_keep(KEEP_CLEAN_START);                             // fresh from a reset already
-    if(!(i & 1)) startBootloader();
+    RESET_KEEP = KEEP_CLEAN_START;                          // fresh from a reset already
+    if(!(i & 1)) SYS_bootloader();
     updating = 1;                                           // the update layout
   }
   // Start every boot from a clean chip. After its time-out the ROM bootloader hands
   // over without a reset, leaving its USB and interrupt setup behind; the pad then
   // enumerated but stopped answering control requests. One software reset per start
   // (it needs the watchdog running) gives every boot the reset state.
-  if(RST_getKeep() != KEEP_CLEAN_START) {
-    RST_keep(KEEP_CLEAN_START);
-    WDT_start();
-    RST_now();
-    while(1);
+  if(RESET_KEEP != KEEP_CLEAN_START) {
+    RESET_KEEP = KEEP_CLEAN_START;
+    SYS_wdtStart();
+    SYS_reset();
   }
-  RST_keep(0);
+  RESET_KEEP = 0;
 #endif
 
-  NEO_init();
-  CLK_config();
-  DLY_ms(5);
+  SYS_init();
+  SYS_delayMs(5);
   SET_load();
   prof = cfg[S_START_PROFILE];
   applySettings();
 
   btn = handled = INP_readRaw();                            // ignore keys held at boot
   if(btn & BTN_BIT(BOOT_BUTTON)) {                          // key 1 held at plug-in: bootloader
-    NEO_latch();
-    for(i = nLeds * 3; i; i--) NEO_sendByte(127);
-    startBootloader();
+    SYS_delayMs(1);
+    for(i = nLeds * 3; i; i--) WS_byte(127);
+    SYS_bootloader();
   }
   if(updating) updateMode();
 
@@ -1165,13 +1152,13 @@ void main(void) {
 
   INP_init();
   USB_init(persona);
-  WDT_start();
+  SYS_wdtStart();
 
   center = knobSeen = pos = INP_position();
   profTime = INP_millis() | 1;                              // show the profile color
 
   while(1) {
-    WDT_reset();
+    SYS_wdtFeed();
     now = INP_millis();
     btn = INP_buttons();
     pos = INP_position();
