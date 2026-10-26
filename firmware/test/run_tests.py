@@ -50,17 +50,22 @@ def simulate(tag, sources, dump_from, dump_len, defines=None):
     # uninitialised variables fails here too (the start-up code must clear them).
     junk = "fill xram 0 0xfff 0xa5\nfill iram 8 0xff 0x5a\n"
     cmds = junk + f"break 0x{done:04x}\nrun\ndump xram 0x{dump_from:x} 0x{end:x}\nquit\n"
-    r = subprocess.run([str(bindir / "s51"), "-t", "8052", "-X", "12M", str(ihx)], input=cmds,
-                       capture_output=True, text=True, timeout=900)
-    text = r.stdout + r.stderr
-    data = bytearray()
-    for m in re.finditer(r"^0x0*([0-9a-f]+)\s+((?:[0-9a-f]{2} ){1,8})", text, re.M):
-        if int(m.group(1), 16) == dump_from + len(data):
-            data += bytes(int(x, 16) for x in m.group(2).split())
-    if len(data) < dump_len:
-        print(text[-1500:])
-        raise RuntimeError(f"{tag}: simulator output not understood")
-    return bytes(data[:dump_len])
+    # s51 goes on reading commands while it simulates, so on a busy machine the dump
+    # can come before the breakpoint and show memory from the middle of the run. Only
+    # a dump after the stop counts; otherwise simulate again.
+    for _ in range(5):
+        r = subprocess.run([str(bindir / "s51"), "-t", "8052", "-X", "12M", str(ihx)], input=cmds,
+                           capture_output=True, text=True, timeout=900)
+        text = r.stdout + r.stderr
+        stop = re.search(r"Stop at 0x0*%x\b.*Breakpoint" % done, text)
+        data = bytearray()
+        for m in re.finditer(r"^0x0*([0-9a-f]+)\s+((?:[0-9a-f]{2} ){1,8})", text[stop.end():] if stop else "", re.M):
+            if int(m.group(1), 16) == dump_from + len(data):
+                data += bytes(int(x, 16) for x in m.group(2).split())
+        if len(data) >= dump_len:
+            return bytes(data[:dump_len])
+    print(text[-1500:])
+    raise RuntimeError(f"{tag}: no dump after the simulation stopped in done()")
 
 
 def test_decoder():
