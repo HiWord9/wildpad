@@ -50,9 +50,11 @@ void SYS_bootloader(void) {
   __endasm;
 }
 
-// 250 passes of 16 cycles
+// 250 passes of 16 cycles. Keeps r7: SDCC doesn't see what inline assembly uses and
+// keeps its own values in registers across the call.
 static void wait250us(void) __naked {
   __asm
+    push ar7
     mov  r7, #250
   00001$:
     nop
@@ -68,6 +70,7 @@ static void wait250us(void) __naked {
     nop
     nop
     djnz r7, 00001$
+    pop  ar7
     ret
   __endasm;
 }
