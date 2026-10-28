@@ -6,9 +6,9 @@
 
 #pragma once
 
-#define FW_MAJOR            0
+#define FW_MAJOR            1
 #define FW_MINOR            0
-#define FW_PATCH            1
+#define FW_PATCH            0
 #define PROTOCOL_VERSION    3           // configuration protocol, see docs/protocol.md
 
 // -----------------------------------------------------------------------------------
