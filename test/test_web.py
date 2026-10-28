@@ -157,6 +157,63 @@ def check_files(page):
         check(back == r["bytes"], f"board {board}: the page reads wildpad.py's file differently")
 
 
+def check_sync_errors(page):
+    """Failed writes, commits and saves must keep changes marked as unsaved."""
+    results = page.evaluate("""async () => {
+      const originalError = console.error;
+      console.error = () => {}; // these transport errors are expected
+      const results = [];
+      let failedCommand, request;
+      dev = {
+        sendFeatureReport: async (_, bytes) => {
+          request = bytes;
+          if (bytes[0] === failedCommand) throw new Error("Test USB failure");
+        },
+        receiveFeatureReport: async () => {
+          const reply = new Uint8Array(FLEN);
+          reply.set([request[0], request[1], 0, PROTO]);
+          return new DataView(reply.buffer);
+        }
+      };
+      try {
+        needSave = false;
+        schedulePush();
+        clearTimeout(pushTimer);
+        results.push(["an edit is unsaved before the delayed write", needSave]);
+        for (const cmd of [CMD.WRITE, CMD.COMMIT, CMD.SAVE]) {
+          failedCommand = cmd;
+          needSave = false;
+          await push();
+          clearTimeout(saveTimer);
+          if (cmd === CMD.SAVE) await save();
+          const closing = new Event("beforeunload", { cancelable: true });
+          window.dispatchEvent(closing);
+          results.push([`command ${cmd}: failure stays unsaved`, needSave]);
+          results.push([`command ${cmd}: status reports unsaved changes`,
+            $("connText").textContent === "Connected · changes not saved"]);
+          results.push([`command ${cmd}: closing warns about unsaved changes`, closing.defaultPrevented]);
+          results.push([`command ${cmd}: disconnect is available after failure`, !$("disconnectBtn").disabled]);
+        }
+        failedCommand = null;
+        await push();
+        clearTimeout(saveTimer);
+        await save();
+        results.push(["a successful retry clears the unsaved state", !needSave]);
+        results.push(["only a successful save reports saved on the pad",
+          $("connText").textContent === "Connected · saved on the pad"]);
+      } finally {
+        clearTimeout(pushTimer);
+        clearTimeout(saveTimer);
+        clearTimeout(toastTimer);
+        dev = null;
+        console.error = originalError;
+      }
+      return results;
+    }""")
+    for name, ok in results:
+        check(ok, name)
+
+
 def main():
     site = Path(sys.argv[sys.argv.index("--site") + 1]) if "--site" in sys.argv else None
     httpd = serve(site or ROOT)
@@ -168,6 +225,7 @@ def main():
         check_actions(page)
         check_names(page)
         check_files(page)
+        check_sync_errors(page)
         for msg in problems:
             check(False, msg)
         browser.close()

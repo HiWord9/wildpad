@@ -51,6 +51,8 @@ async function readAll(size) {
 let pushTimer = null, saveTimer = null, pushing = false, pendingPush = false, needSave = false;
 function schedulePush() {
   if (!dev) return;
+  needSave = true;
+  clearTimeout(saveTimer);
   setSync("busy");
   clearTimeout(pushTimer);
   pushTimer = setTimeout(push, 120);
@@ -59,6 +61,8 @@ async function push() {
   if (!dev) return;
   if (pushing) { pendingPush = true; return; }
   pushing = true;
+  needSave = true;
+  clearTimeout(saveTimer);
   try {
     const b = model.bytes();
     for (let off = 0; off < b.length; off += CHUNK) await command(CMD.WRITE, off, Array.from(b.subarray(off, off + CHUNK)));
@@ -139,7 +143,11 @@ function setSync(state, text) {
   label.textContent = text || (state === "saved" ? "Connected · saved on the pad" : state === "busy" ? "Saving…" : reconnecting ? "Reconnecting…" : "Demo");
 }
 
-function fail(e) { console.error(e); toast(e.message || String(e), true); if (dev) setSync("saved"); }
+function fail(e) {
+  console.error(e);
+  toast(e.message || String(e), true);
+  if (dev) setSync("error", needSave ? "Connected · changes not saved" : "Connected · operation failed");
+}
 
 let toastTimer;
 function toast(text, err) {
